@@ -251,6 +251,10 @@ table.sel td.desc .clamp {
         <button class="btn" id="btn-vorlage" type="button">Leere Vorlage herunterladen</button>
         <span class="sub">Zum Ausfüllen – danach hier wieder hineinziehen.</span>
       </p>
+      <p style="margin-top:10px;">
+        <button class="btn" id="btn-ohne-excel" type="button">Ohne Excel – manuell eingeben</button>
+        <span class="sub">Paletten von Hand erfassen, ganz ohne Datei.</span>
+      </p>
     </div>
 
     <div id="tabelle-wrap" class="hidden sel-wrap">
@@ -3448,10 +3452,29 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     leser.readAsArrayBuffer(datei);
   }
 
+  /* Einstieg ganz ohne Excel: leere Liste anlegen und direkt in die
+   * Auswahl-Ansicht wechseln, dort kann alles ueber "+ Palette manuell
+   * hinzufuegen" erfasst werden. Nutzt dieselbe Datenstruktur/denselben Weg
+   * wie ein Excel-Import - Rechenlogik bleibt unberuehrt. */
+  function starteOhneExcel() {
+    katalog = {};
+    reihenfolge = [];
+    auswahl = {};
+    quelldatei = "Manuelle Eingabe";
+    $("fehler").textContent = "";
+    $("dateiname").textContent = "Manuelle Eingabe (kein Excel)";
+    $("drop").classList.add("hidden");
+    $("tabelle-wrap").classList.remove("hidden");
+    zeichneFilter();
+    zeichneTabelle();
+    aktualisiereFuss();
+  }
+
   window.addEventListener("DOMContentLoaded", function () {
     $("datei").addEventListener("change", function (e) {
       if (e.target.files && e.target.files[0]) ladeDatei(e.target.files[0]);
     });
+    $("btn-ohne-excel").addEventListener("click", starteOhneExcel);
     ["dragover", "drop"].forEach(function (ev) {
       document.addEventListener(ev, function (e) { e.preventDefault(); });
     });
