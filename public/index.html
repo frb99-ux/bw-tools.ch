@@ -10,89 +10,50 @@
     --panel: #121620;
     --panel-hover: #182030;
     --line: #242c38;
-    --text: #eef2f6;
-    --muted: #8a94a3;
     --accent: #3e7bb6;
     --accent-soft: rgba(62, 123, 182, .16);
   }
   * { box-sizing: border-box; }
-  html, body {
-    margin: 0; min-height: 100%;
-    background: var(--bg); color: var(--text);
-    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  }
+  html, body { margin: 0; background: var(--bg); }
   body {
-    display: flex; flex-direction: column; align-items: center;
-    padding: 64px 24px 40px;
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 32px;
   }
-  header { text-align: center; margin-bottom: 48px; }
-  header h1 {
-    margin: 0; font-size: 28px; font-weight: 650; letter-spacing: .2px;
-  }
-  header h1 .dim { color: var(--muted); font-weight: 500; }
-  header p { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
 
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 22px;
-    width: 100%; max-width: 720px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: clamp(14px, 4vw, 26px);
+    width: 100%; max-width: 760px;
+  }
+  @media (min-width: 480px) {
+    .grid { grid-template-columns: repeat(4, 1fr); }
   }
 
   .tile {
-    position: relative;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 14px;
+    display: flex; align-items: center; justify-content: center;
     aspect-ratio: 1 / 1;
-    border-radius: 20px;
+    border-radius: 22px;
     background: var(--panel);
     border: 1px solid var(--line);
-    text-decoration: none; color: var(--text);
+    text-decoration: none;
     transition: transform .15s ease, background .15s ease, border-color .15s ease;
   }
-  a.tile:hover, a.tile:focus-visible {
-    background: var(--panel-hover);
-    border-color: var(--accent);
-    transform: translateY(-3px);
-  }
+  a.tile:hover, a.tile:focus-visible { background: var(--panel-hover); border-color: var(--accent); transform: translateY(-3px); }
+
   .tile .icon-wrap {
-    width: 56px; height: 56px;
+    width: 62%; height: 62%;
     display: flex; align-items: center; justify-content: center;
-    border-radius: 14px;
-    background: var(--accent-soft);
     color: var(--accent);
   }
-  .tile .icon-wrap svg { width: 32px; height: 32px; }
-  .tile .label { font-size: 13.5px; font-weight: 600; letter-spacing: .1px; }
+  .tile .icon-wrap svg { width: 100%; height: 100%; }
 
-  .tile.placeholder {
-    background: transparent;
-    border: 1.5px dashed var(--line);
-    cursor: default;
-  }
-  .tile.placeholder .icon-wrap {
-    background: transparent;
-    border: 1.5px dashed var(--line);
-    color: #3a4350;
-  }
-  .tile.placeholder .label { color: #3a4350; }
-  .tile.placeholder .badge {
-    position: absolute; bottom: 14px;
-    font-size: 10px; color: #56606f;
-    background: #0d1117; border: 1px solid var(--line);
-    border-radius: 20px; padding: 2px 9px;
-  }
-  .tile.placeholder .label { margin-bottom: 14px; }
-
-  footer { margin-top: 56px; color: #4a5462; font-size: 12px; }
+  .tile.placeholder { background: transparent; border: 1.5px dashed var(--line); cursor: default; }
+  .tile.placeholder .icon-wrap { color: #333d4a; }
 </style>
 </head>
 <body>
-
-<header>
-  <h1>bw<span class="dim">-</span>tools<span class="dim">.ch</span></h1>
-  <p>Interne Tools von BrogleWorks</p>
-</header>
 
 <div class="grid">
 
@@ -110,7 +71,6 @@
         <path d="M15 17 V28 M20 17 V28 M25 17 V28" stroke="currentColor" stroke-width="1" opacity=".5"/>
       </svg>
     </span>
-    <span class="label">Ladeplan</span>
   </a>
 
   <div class="tile placeholder" aria-disabled="true">
@@ -119,8 +79,6 @@
         <rect x="10" y="10" width="20" height="20" rx="4" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.5"/>
       </svg>
     </span>
-    <span class="label">&nbsp;</span>
-    <span class="badge">Bald verfügbar</span>
   </div>
 
   <div class="tile placeholder" aria-disabled="true">
@@ -129,8 +87,6 @@
         <rect x="10" y="10" width="20" height="20" rx="4" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.5"/>
       </svg>
     </span>
-    <span class="label">&nbsp;</span>
-    <span class="badge">Bald verfügbar</span>
   </div>
 
   <div class="tile placeholder" aria-disabled="true">
@@ -139,8 +95,6 @@
         <rect x="10" y="10" width="20" height="20" rx="4" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.5"/>
       </svg>
     </span>
-    <span class="label">&nbsp;</span>
-    <span class="badge">Bald verfügbar</span>
   </div>
 
   <div class="tile placeholder" aria-disabled="true">
@@ -149,13 +103,33 @@
         <rect x="10" y="10" width="20" height="20" rx="4" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.5"/>
       </svg>
     </span>
-    <span class="label">&nbsp;</span>
-    <span class="badge">Bald verfügbar</span>
+  </div>
+
+  <div class="tile placeholder" aria-disabled="true">
+    <span class="icon-wrap">
+      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="10" width="20" height="20" rx="4" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.5"/>
+      </svg>
+    </span>
+  </div>
+
+  <div class="tile placeholder" aria-disabled="true">
+    <span class="icon-wrap">
+      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="10" width="20" height="20" rx="4" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.5"/>
+      </svg>
+    </span>
+  </div>
+
+  <div class="tile placeholder" aria-disabled="true">
+    <span class="icon-wrap">
+      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="10" width="20" height="20" rx="4" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.5"/>
+      </svg>
+    </span>
   </div>
 
 </div>
-
-<footer>BrogleWorks · bw-tools.ch</footer>
 
 </body>
 </html>
