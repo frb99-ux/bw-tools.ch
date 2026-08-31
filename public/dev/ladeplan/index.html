@@ -224,7 +224,8 @@ table.sel td.desc .clamp {
     </select>
   </div>
 
-  <div id="kopf-plan" class="hidden" style="display:flex;gap:10px;align-items:center;">
+  <div id="kopf-plan" class="hidden" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <div id="plan-stufen" class="hidden" style="display:flex;gap:6px;"></div>
     <span class="sub" id="plan-info"></span>
   </div>
 
@@ -263,11 +264,14 @@ table.sel td.desc .clamp {
         <select id="f-kategorie"><option value="">Alle Kategorien</option></select>
         <label class="lp-check"><input type="checkbox" id="f-gewaehlt"> nur gewählte</label>
         <label class="sub">Stapeln</label>
-        <select id="f-stapel" title="Setzt die Stapelbarkeit für alle Paletten; einzeln übersteuerbar">
+        <select id="f-stapel" title="Setzt Träger UND Oben für alle Paletten gleichzeitig; einzeln übersteuerbar">
           <option value="kategorie" selected>Vorschlag nach Kategorie</option>
           <option value="flach">flache Paletten (≤ 1200 mm)</option>
           <option value="alle">alles stapelbar</option>
           <option value="keine">nicht stapeln</option>
+        </select>
+        <select id="f-stufe" class="hidden" title="Nur Paletten dieser Prioritäts-Stufe anzeigen">
+          <option value="">Alle Prioritäten</option>
         </select>
         <button class="btn" id="btn-alle">Sichtbare wählen</button>
         <button class="btn" id="btn-keine">Auswahl leeren</button>
@@ -287,7 +291,10 @@ table.sel td.desc .clamp {
               <th style="width:170px;">L × B × H (mm)</th>
               <th style="width:90px;">Gewicht (kg)</th>
               <th style="width:90px;">Menge</th>
-              <th style="width:140px;">Stapelbar</th>
+              <th style="width:150px;">Priorität</th>
+              <th style="width:90px;">Gruppe</th>
+              <th style="width:70px;" title="Darf man etwas AUF diese Palette draufstellen?">Träger</th>
+              <th style="width:70px;" title="Kann diese Palette selbst gewichtsmässig auf etwas anderem stehen?">Oben</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -299,9 +306,9 @@ table.sel td.desc .clamp {
         <span class="stat">Volumen: <b id="s-volumen">0 m³</b></span>
         <span class="stat">Gewicht: <b id="s-gewicht">0 kg</b></span>
         <span class="spacer"></span>
-        <span class="stat">+50 mm Ladetoleranz pro Dimension · das Häkchen «Stapelbar»
-          entscheidet, welche Paletten Last tragen dürfen – je mehr freigegeben,
-          desto weniger Container</span>
+        <span class="stat">+50 mm Ladetoleranz pro Dimension · «Träger» = darf man etwas
+          draufstellen, «Oben» = kann selbst auf etwas anderem stehen – je mehr
+          freigegeben, desto weniger Container</span>
       </div>
     </div>
 
@@ -318,7 +325,12 @@ table.sel td.desc .clamp {
           <label>Länge (mm) *<input type="number" id="m-laenge" min="1" step="1"></label>
           <label>Breite (mm) *<input type="number" id="m-breite" min="1" step="1"></label>
           <label>Höhe (mm) *<input type="number" id="m-hoehe" min="1" step="1"></label>
-          <label class="lp-check" style="margin-top:18px;"><input type="checkbox" id="m-stapelbar"> Stapelbar</label>
+          <label id="m-prioritaet-feld" class="hidden">Priorität
+            <select id="m-prioritaet"></select>
+          </label>
+          <label>Gruppe (Stapel-Zwang)<input type="text" id="m-gruppe" placeholder="optional, z.B. A"></label>
+          <label class="lp-check" style="margin-top:18px;"><input type="checkbox" id="m-traeger"> Träger (darf man etwas draufstellen)</label>
+          <label class="lp-check" style="margin-top:18px;"><input type="checkbox" id="m-oben"> Oben-ok (kann selbst auf etwas stehen)</label>
         </div>
         <datalist id="m-kategorien"></datalist>
         <div id="m-fehler" class="err" style="padding:8px 0 0;"></div>
@@ -1418,6 +1430,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
  * Seitenwand, z = Hoehe ab Boden.  Gerechnet wird mit effektiven Massen
  * (real + 50 mm Toleranz), gerendert wird mit realen Massen.
  *
+ * Stapel-Modell: zwei getrennte Attribute statt einer Stapelbar-Checkbox -
+ * traeger (darf man etwas draufstellen) und oben_ok (kann selbst auf etwas
+ * anderem stehen). Erzwungene Gruppen-Stapelung + Prioritaets-Kaskade siehe
+ * ladeplan/packer.py (identische Logik, muss bitgleich bleiben).
+ *
  * Laeuft im Browser und in Node (fuer die Quervalidierung gegen Python).
  */
 (function (global) {
@@ -1576,6 +1593,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       { x: 0, y: TOLERANZ_MM, z: 0, dx: this.L, dy: this.B - TOLERANZ_MM, dz: this.H },
     ];
     this.gewichtKg = 0;
+    // Label der Prioritaets-Stufe, in der dieser Container zuerst geoeffnet
+    // wurde (nur fuer die Kaskade relevant, sonst null).
+    this.erstelltStufe = null;
   }
 
   Container.prototype.auflage = function (x, y, z, dx, dy, gewicht) {
@@ -1590,7 +1610,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       var ux0 = Math.max(x, p.x), uy0 = Math.max(y, p.y);
       var ux1 = Math.min(x + dx, p.x + p.effL), uy1 = Math.min(y + dy, p.y + p.effB);
       if (ux1 - ux0 <= EPS || uy1 - uy0 <= EPS) continue;
-      if (!p.stueck.stapelbar) return { ok: false, traeger: null };
+      if (!p.stueck.traeger) return { ok: false, traeger: null };
       if (gewicht > p.stueck.gewicht_kg + EPS) return { ok: false, traeger: null };
       schnitte.push([ux0, uy0, ux1, uy1]);
       var f = (ux1 - ux0) * (uy1 - uy0);
@@ -1614,6 +1634,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     var bestesKey = null, beste = null;
     for (var i = 0; i < this.freiraeume.length; i++) {
       var fr = this.freiraeume[i];
+      if (fr.z > EPS && !stueck.oben_ok) continue; // nur "oben_ok"-Paletten duerfen erhoeht stehen
       for (var v = 0; v < varianten.length; v++) {
         var realL = varianten[v][0], realB = varianten[v][1], rot = varianten[v][2];
         var effL = realL + TOLERANZ_MM;
@@ -1703,8 +1724,6 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   function passtGrundsaetzlich(stueck, spec) {
     var L = spec.innenmass_mm.laenge, B = spec.innenmass_mm.breite, H = spec.innenmass_mm.hoehe;
     var t = TOLERANZ_MM;
-    // Breite (Querachse) braucht die Toleranz auf BEIDEN Seiten (links UND
-    // rechts an die Seitenwand), Laenge und Hoehe nur auf einer Seite.
     var tb = 2 * TOLERANZ_MM;
     var l = stueck.laenge_mm, b = stueck.breite_mm, h = stueck.hoehe_mm;
 
@@ -1753,6 +1772,73 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     if (stueck.hoehe_mm > tuer.hoehe) gruende.push("Höhe " + stueck.hoehe_mm + " mm > Türöffnung " + tuer.hoehe + " mm");
     if (!gruende.length) return null;
     return "Sonderfall – Verladung vor Ort prüfen: " + gruende.join("; ");
+  }
+
+  // ------------------------------------------------------- Gruppen-Stapelung
+  /* Fasst Paletten mit gleicher `gruppe` zu festen 2er-Stapeln zusammen
+   * (schwerere Palette unten). Muss exakt wie ladeplan/packer.py verfahren:
+   * gleiche Sortierung, gleiche Paar-Bildung, gleicher Hoehen-Fallback. */
+  function gruppenKombinieren(stuecke, spec) {
+    var H = spec.innenmass_mm.hoehe;
+    var nachGruppe = {};
+    var ergebnis = [];
+    stuecke.forEach(function (s) {
+      if (s.gruppe) {
+        if (!nachGruppe[s.gruppe]) nachGruppe[s.gruppe] = [];
+        nachGruppe[s.gruppe].push(s);
+      } else {
+        ergebnis.push(s);
+      }
+    });
+
+    var hinweise = [];
+    Object.keys(nachGruppe).sort().forEach(function (gruppe) {
+      var mitglieder = nachGruppe[gruppe].slice().sort(function (a, b) {
+        return b.gewicht_kg - a.gewicht_kg || (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0);
+      });
+      var i = 0;
+      while (i < mitglieder.length) {
+        if (i + 1 >= mitglieder.length) {
+          ergebnis.push(mitglieder[i]);
+          hinweise.push(
+            "Gruppe " + gruppe + ": " + mitglieder[i].nr + " hat keinen Stapelpartner " +
+            "(ungerade Anzahl) und wird einzeln geplant."
+          );
+          i += 1;
+          continue;
+        }
+        var unten = mitglieder[i], oben = mitglieder[i + 1];
+        var kombiH = unten.hoehe_mm + TOLERANZ_MM + oben.hoehe_mm;
+        if (kombiH + TOLERANZ_MM > H + 1e-6) {
+          ergebnis.push(unten);
+          ergebnis.push(oben);
+          hinweise.push(
+            "Gruppe " + gruppe + ": " + unten.nr + " + " + oben.nr + " passen zusammengestapelt " +
+            "nicht unter die Containerhöhe – werden einzeln geplant (nicht garantiert übereinander)."
+          );
+        } else {
+          ergebnis.push({
+            uid: unten.uid + "+" + oben.uid,
+            nr: unten.nr + "+" + oben.nr,
+            bezeichnung: unten.bezeichnung + " + " + oben.bezeichnung,
+            kategorie: unten.kategorie,
+            gewicht_kg: unten.gewicht_kg + oben.gewicht_kg,
+            laenge_mm: Math.max(unten.laenge_mm, oben.laenge_mm),
+            breite_mm: Math.max(unten.breite_mm, oben.breite_mm),
+            hoehe_mm: kombiH,
+            traeger: false,
+            oben_ok: false,
+            rotation_erlaubt: unten.rotation_erlaubt !== false && oben.rotation_erlaubt !== false,
+            gruppe: gruppe,
+            prioritaet: unten.prioritaet,
+            lieferdatum: unten.lieferdatum,
+            kombiTeile: [unten, oben],
+          });
+        }
+        i += 2;
+      }
+    });
+    return { stuecke: ergebnis, hinweise: hinweise };
   }
 
   /* Prueft die Einbringbarkeit jeder Palette in Ladereihenfolge: sie muss von
@@ -1862,17 +1948,21 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return [offen.length, belegt.length, laenge, index];
   }
 
-  /* First-Fit ueber alle offenen Container; passt ein Stueck nirgends, wird
-   * ein weiterer Container geoeffnet (bis zur Obergrenze).  Entspricht dem
-   * iterativen Hochzaehlen der Containerzahl in einem Durchlauf. */
-  function packe(stuecke, spec, startAnzahl, obergrenze) {
-    var container = [];
-    for (var i = 0; i < Math.max(1, startAnzahl); i++) container.push(new Container(i + 1, spec));
-    var minDim = Infinity;
+  function minDimFuer(stuecke) {
+    if (!stuecke.length) return 0;
+    var m = Infinity;
     stuecke.forEach(function (s) {
-      minDim = Math.min(minDim, s.laenge_mm, s.breite_mm, s.hoehe_mm);
+      m = Math.min(m, s.laenge_mm, s.breite_mm, s.hoehe_mm);
     });
-    minDim = stuecke.length ? minDim + TOLERANZ_MM : 0;
+    return m + TOLERANZ_MM;
+  }
+
+  /* First-Fit ueber alle offenen Container; passt ein Stueck nirgends, wird
+   * ein weiterer Container geoeffnet (bis zur Obergrenze). */
+  function packe(stuecke, spec, startAnzahl, obergrenze, minDim, startIndex) {
+    startIndex = startIndex || 1;
+    var container = [];
+    for (var i = 0; i < Math.max(1, startAnzahl); i++) container.push(new Container(startIndex + i, spec));
     var offen = [];
     stuecke.forEach(function (stueck) {
       for (var c = 0; c < container.length; c++) {
@@ -1883,7 +1973,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         }
       }
       if (container.length < obergrenze) {
-        var neu = new Container(container.length + 1, spec);
+        var neu = new Container(startIndex + container.length, spec);
         var t2 = neu.findePlatz(stueck);
         if (t2) {
           neu.platziere(t2, minDim);
@@ -1896,226 +1986,391 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return { container: container, offen: offen };
   }
 
-  function erstelleLadeplan(stuecke, containerTyp, maxContainer) {
-    var spec = CONTAINER_TYPEN[containerTyp];
-    if (!spec) throw new Error("Unbekannter Containertyp: " + containerTyp);
-    var innen = spec.innenmass_mm;
+  function multiStartPack(ladbar, spec, obergrenze, minDim, startAnzahl, startIndex) {
+    if (!ladbar.length) return { container: [], offen: [], sortierung: SORTIERUNGEN[0].name };
+    var bestesGuete = null, container = [], offen = [], gewaehlteSortierung = SORTIERUNGEN[0].name;
+    SORTIERUNGEN.forEach(function (variante, index) {
+      var liste = ladbar.slice().sort(variante.cmp);
+      var lauf = packe(liste, spec, Math.min(startAnzahl, obergrenze), obergrenze, minDim, startIndex);
+      var g = guete(lauf.container, lauf.offen, index);
+      if (bestesGuete === null || vergleicheSchluessel(g, bestesGuete) < 0) {
+        bestesGuete = g;
+        container = lauf.container;
+        offen = lauf.offen;
+        gewaehlteSortierung = variante.name;
+      }
+    });
+    container = container.filter(function (c) { return c.platzierungen.length; });
+    return { container: container, offen: offen, sortierung: gewaehlteSortierung };
+  }
 
+  function mindestContainer(ladbar, spec) {
+    if (!ladbar.length) return { volumen: 0, einlagig: 0 };
+    var innen = spec.innenmass_mm;
+    var effVol = 0, effFlaeche = 0, gesamtKg = 0;
+    ladbar.forEach(function (s) {
+      effVol += (s.laenge_mm + TOLERANZ_MM) * (s.breite_mm + TOLERANZ_MM) * (s.hoehe_mm + TOLERANZ_MM) / 1e9;
+      effFlaeche += (s.laenge_mm + TOLERANZ_MM) * (s.breite_mm + TOLERANZ_MM) / 1e6;
+      gesamtKg += s.gewicht_kg;
+    });
+    var cVol = innen.laenge * innen.breite * innen.hoehe / 1e9;
+    var cFlaeche = innen.laenge * innen.breite / 1e6;
+    var volumen = Math.max(
+      1, Math.ceil(effVol / cVol - 1e-9), Math.ceil(gesamtKg / spec.max_zuladung_kg - 1e-9)
+    );
+    var einlagig = Math.max(volumen, Math.ceil(effFlaeche / cFlaeche - 1e-9));
+    return { volumen: volumen, einlagig: einlagig };
+  }
+
+  function nichtLadbarEintrag(stueck, grund, nurToleranz) {
+    if (stueck.kombiTeile) {
+      var eintraege = stueck.kombiTeile.map(function (teil) {
+        return nichtLadbarEintrag(teil, grund, nurToleranz);
+      });
+      return {
+        paletten_nr: stueck.nr, bezeichnung: stueck.bezeichnung, kategorie: stueck.kategorie,
+        grund: grund, nur_wegen_toleranz: !!nurToleranz,
+        reale_masse_mm: { laenge: stueck.laenge_mm, breite: stueck.breite_mm, hoehe: stueck.hoehe_mm },
+        gewicht_kg: stueck.gewicht_kg, gruppen_teile: eintraege,
+      };
+    }
+    return {
+      paletten_nr: stueck.nr, bezeichnung: stueck.bezeichnung, kategorie: stueck.kategorie,
+      grund: grund, nur_wegen_toleranz: !!nurToleranz,
+      reale_masse_mm: { laenge: stueck.laenge_mm, breite: stueck.breite_mm, hoehe: stueck.hoehe_mm },
+      gewicht_kg: stueck.gewicht_kg,
+    };
+  }
+
+  function vorverarbeiten(stuecke, spec) {
+    var g = gruppenKombinieren(stuecke, spec);
     var nichtLadbar = [], ladbar = [], sonderfaelle = {};
-    stuecke.forEach(function (s) {
+    g.stuecke.forEach(function (s) {
       var pruef = passtGrundsaetzlich(s, spec);
       if (!pruef.passt) {
-        nichtLadbar.push({
-          paletten_nr: s.nr,
-          bezeichnung: s.bezeichnung,
-          kategorie: s.kategorie,
-          grund: pruef.grund,
-          nur_wegen_toleranz: pruef.nurToleranz,
-          reale_masse_mm: { laenge: s.laenge_mm, breite: s.breite_mm, hoehe: s.hoehe_mm },
-          gewicht_kg: s.gewicht_kg,
-        });
+        nichtLadbar.push(nichtLadbarEintrag(s, pruef.grund, pruef.nurToleranz));
         return;
       }
-      var tuer = tuerCheck(s, spec);
-      if (tuer) sonderfaelle[s.uid] = tuer;
+      if (s.kombiTeile) {
+        s.kombiTeile.forEach(function (teil) {
+          var tuer = tuerCheck(teil, spec);
+          if (tuer) sonderfaelle[teil.uid] = tuer;
+        });
+      } else {
+        var tuer2 = tuerCheck(s, spec);
+        if (tuer2) sonderfaelle[s.uid] = tuer2;
+      }
       ladbar.push(s);
     });
+    return { ladbar: ladbar, nichtLadbar: nichtLadbar, sonderfaelle: sonderfaelle, gruppenHinweise: g.hinweise };
+  }
 
-    var container = [], offen = [];
-    var gewaehlteSortierung = SORTIERUNGEN[0].name;
-    var minContainerVolumen = 0, minContainerEinlagig = 0;
-    if (ladbar.length) {
-      var effVol = 0, effFlaeche = 0, gesamtKg = 0;
-      ladbar.forEach(function (s) {
-        effVol += (s.laenge_mm + TOLERANZ_MM) * (s.breite_mm + TOLERANZ_MM) * (s.hoehe_mm + TOLERANZ_MM) / 1e9;
-        effFlaeche += (s.laenge_mm + TOLERANZ_MM) * (s.breite_mm + TOLERANZ_MM) / 1e6;
-        gesamtKg += s.gewicht_kg;
-      });
-      var cVol = innen.laenge * innen.breite * innen.hoehe / 1e9;
-      var cFlaeche = innen.laenge * innen.breite / 1e6;
-      minContainerVolumen = Math.max(
-        1,
-        Math.ceil(effVol / cVol - 1e-9),
-        Math.ceil(gesamtKg / spec.max_zuladung_kg - 1e-9)
+  function platzierungEintraege(p, uidZuNr, sonderfaelle, konflikte, containerId, warnungen) {
+    function blockiertFuer(uid) {
+      var b = konflikte[uid];
+      if (!b) return null;
+      var eindeutig = b.filter(function (v, i, a) { return a.indexOf(v) === i; }).sort();
+      warnungen.push(
+        (uidZuNr[uid] || uid) + " (Container " + containerId + ") müsste über " +
+        eindeutig.join(", ") + " gehoben werden"
       );
-      minContainerEinlagig = Math.max(
-        minContainerVolumen, Math.ceil(effFlaeche / cFlaeche - 1e-9)
-      );
-      var obergrenze = maxContainer || ladbar.length;
-
-      // Multi-Start: jede Sortierung durchrechnen, das beste Ergebnis nehmen.
-      var bestesGuete = null;
-      SORTIERUNGEN.forEach(function (variante, index) {
-        var liste = ladbar.slice().sort(variante.cmp);
-        var lauf = packe(liste, spec, Math.min(minContainerVolumen, obergrenze), obergrenze);
-        var g = guete(lauf.container, lauf.offen, index);
-        if (bestesGuete === null || vergleicheSchluessel(g, bestesGuete) < 0) {
-          bestesGuete = g;
-          container = lauf.container;
-          offen = lauf.offen;
-          gewaehlteSortierung = variante.name;
-        }
-      });
-
-      offen.forEach(function (s) {
-        nichtLadbar.push({
-          paletten_nr: s.nr,
-          bezeichnung: s.bezeichnung,
-          kategorie: s.kategorie,
-          grund: "Konnte innerhalb der zulässigen Containeranzahl nicht regelkonform platziert werden",
-          nur_wegen_toleranz: false,
-          reale_masse_mm: { laenge: s.laenge_mm, breite: s.breite_mm, hoehe: s.hoehe_mm },
-          gewicht_kg: s.gewicht_kg,
-        });
-      });
-      container = container.filter(function (c) {
-        return c.platzierungen.length;
-      });
+      return eindeutig;
     }
 
-    container.forEach(sequenziere);
+    if (!p.stueck.kombiTeile) {
+      var blockiert = blockiertFuer(p.stueck.uid);
+      return [{
+        paletten_nr: p.stueck.nr,
+        bezeichnung: p.stueck.bezeichnung,
+        kategorie: p.stueck.kategorie,
+        farbe: kategorieFarbe(p.stueck.kategorie),
+        position_mm: { x: Math.round(p.x), y: Math.round(p.y), z: Math.round(p.z) },
+        reale_masse_mm: { laenge: Math.round(p.realL), breite: Math.round(p.realB), hoehe: Math.round(p.realH) },
+        effektive_masse_mm: { laenge: Math.round(p.effL), breite: Math.round(p.effB), hoehe: Math.round(p.effH) },
+        gewicht_kg: p.stueck.gewicht_kg,
+        rotiert: p.rotiert,
+        traeger: !!p.stueck.traeger,
+        oben_ok: !!p.stueck.oben_ok,
+        gruppe: p.stueck.gruppe || null,
+        gestapelt_auf: p.gestapeltAuf ? (uidZuNr[p.gestapeltAuf] || null) : null,
+        hubhoehe_mm: Math.round(p.z),
+        einbringen_blockiert_durch: blockiert,
+        sonderfall: sonderfaelle[p.stueck.uid] || null,
+      }];
+    }
 
+    var unten = p.stueck.kombiTeile[0], oben = p.stueck.kombiTeile[1];
+    var untenL, untenB, obenL, obenB;
+    if (p.rotiert) {
+      untenL = unten.breite_mm; untenB = unten.laenge_mm;
+      obenL = oben.breite_mm; obenB = oben.laenge_mm;
+    } else {
+      untenL = unten.laenge_mm; untenB = unten.breite_mm;
+      obenL = oben.laenge_mm; obenB = oben.breite_mm;
+    }
+    var zUnten = p.z;
+    var zOben = p.z + unten.hoehe_mm + TOLERANZ_MM;
+    var blockiertUnten = blockiertFuer(unten.uid);
+    var blockiertOben = blockiertFuer(oben.uid);
+
+    var eintragUnten = {
+      paletten_nr: unten.nr, bezeichnung: unten.bezeichnung, kategorie: unten.kategorie,
+      farbe: kategorieFarbe(unten.kategorie),
+      position_mm: { x: Math.round(p.x), y: Math.round(p.y), z: Math.round(zUnten) },
+      reale_masse_mm: { laenge: Math.round(untenL), breite: Math.round(untenB), hoehe: Math.round(unten.hoehe_mm) },
+      effektive_masse_mm: { laenge: Math.round(p.effL), breite: Math.round(p.effB), hoehe: Math.round(unten.hoehe_mm + TOLERANZ_MM) },
+      gewicht_kg: unten.gewicht_kg,
+      rotiert: p.rotiert,
+      traeger: false, oben_ok: false, gruppe: unten.gruppe || null,
+      gestapelt_auf: p.gestapeltAuf ? (uidZuNr[p.gestapeltAuf] || null) : null,
+      hubhoehe_mm: Math.round(zUnten),
+      einbringen_blockiert_durch: blockiertUnten,
+      sonderfall: sonderfaelle[unten.uid] || null,
+    };
+    var eintragOben = {
+      paletten_nr: oben.nr, bezeichnung: oben.bezeichnung, kategorie: oben.kategorie,
+      farbe: kategorieFarbe(oben.kategorie),
+      position_mm: { x: Math.round(p.x), y: Math.round(p.y), z: Math.round(zOben) },
+      reale_masse_mm: { laenge: Math.round(obenL), breite: Math.round(obenB), hoehe: Math.round(oben.hoehe_mm) },
+      effektive_masse_mm: { laenge: Math.round(p.effL), breite: Math.round(p.effB), hoehe: Math.round(oben.hoehe_mm + TOLERANZ_MM) },
+      gewicht_kg: oben.gewicht_kg,
+      rotiert: p.rotiert,
+      traeger: false, oben_ok: false, gruppe: oben.gruppe || null,
+      gestapelt_auf: unten.nr,
+      hubhoehe_mm: Math.round(zOben),
+      einbringen_blockiert_durch: blockiertOben,
+      sonderfall: sonderfaelle[oben.uid] || null,
+    };
+    return [eintragUnten, eintragOben];
+  }
+
+  function containerZuJson(container, sonderfaelle) {
     var uidZuNr = {};
     container.forEach(function (c) {
       c.platzierungen.forEach(function (p) {
         uidZuNr[p.stueck.uid] = p.stueck.nr;
+        if (p.stueck.kombiTeile) {
+          p.stueck.kombiTeile.forEach(function (teil) { uidZuNr[teil.uid] = teil.nr; });
+        }
       });
     });
 
     var einbringWarnungen = [];
     var containerJson = container.map(function (c, idx) {
       var konflikte = einbringKonflikte(c);
-      var paletten = c.platzierungen
+      var paletten = [];
+      c.platzierungen
         .slice()
         .sort(function (a, b) { return a.sequenz - b.sequenz; })
-        .map(function (p) {
-          var blockiert = konflikte[p.stueck.uid];
-          if (blockiert) {
-            blockiert = blockiert.filter(function (v, i, a) { return a.indexOf(v) === i; }).sort();
-            einbringWarnungen.push(
-              p.stueck.nr + " (Container " + (idx + 1) + ") müsste über " +
-              blockiert.join(", ") + " gehoben werden"
-            );
-          }
-          return {
-            paletten_nr: p.stueck.nr,
-            bezeichnung: p.stueck.bezeichnung,
-            kategorie: p.stueck.kategorie,
-            farbe: kategorieFarbe(p.stueck.kategorie),
-            lade_sequenz: p.sequenz,
-            position_mm: { x: Math.round(p.x), y: Math.round(p.y), z: Math.round(p.z) },
-            reale_masse_mm: {
-              laenge: Math.round(p.realL),
-              breite: Math.round(p.realB),
-              hoehe: Math.round(p.realH),
-            },
-            effektive_masse_mm: {
-              laenge: Math.round(p.effL),
-              breite: Math.round(p.effB),
-              hoehe: Math.round(p.effH),
-            },
-            gewicht_kg: p.stueck.gewicht_kg,
-            rotiert: p.rotiert,
-            stapelbar: !!p.stueck.stapelbar,
-            gestapelt_auf: p.gestapeltAuf ? uidZuNr[p.gestapeltAuf] || null : null,
-            // Hoehe, auf die die Palette beim Laden gehoben werden muss
-            hubhoehe_mm: Math.round(p.z),
-            einbringen_blockiert_durch: blockiert || null,
-            sonderfall: sonderfaelle[p.stueck.uid] || null,
-          };
+        .forEach(function (p) {
+          paletten = paletten.concat(
+            platzierungEintraege(p, uidZuNr, sonderfaelle, konflikte, idx + 1, einbringWarnungen)
+          );
         });
-      var gewicht = 0, realVol = 0, belegteLaenge = 0, maxHub = 0, gestapelt = 0;
-      c.platzierungen.forEach(function (p) {
-        gewicht += p.stueck.gewicht_kg;
-        realVol += (p.realL * p.realB * p.realH) / 1e9;
-        belegteLaenge = Math.max(belegteLaenge, p.x + p.effL);
-        maxHub = Math.max(maxHub, p.z);
-        if (p.z > EPS) gestapelt += 1;
-      });
+      paletten.forEach(function (eintrag, i) { eintrag.lade_sequenz = i + 1; });
+
+      var gewicht = 0;
+      c.platzierungen.forEach(function (p) { gewicht += p.stueck.gewicht_kg; });
+      var realVol = 0;
+      c.platzierungen.forEach(function (p) { realVol += (p.realL * p.realB * p.realH) / 1e9; });
       var cVol = (c.L * c.B * c.H) / 1e9;
+      var belegteLaenge = c.platzierungen.length
+        ? Math.max.apply(null, c.platzierungen.map(function (p) { return p.x + p.effL; }))
+        : 0;
+      var maxHub = c.platzierungen.length
+        ? Math.max.apply(null, c.platzierungen.map(function (p) { return p.z; }))
+        : 0;
+
       return {
         container_id: idx + 1,
+        prioritaet_stufe: c.erstelltStufe,
         paletten: paletten,
         anzahl_paletten: paletten.length,
         gewicht_kg: Math.round(gewicht * 10) / 10,
         max_hubhoehe_mm: Math.round(maxHub),
-        anzahl_gestapelt: gestapelt,
+        anzahl_gestapelt: paletten.filter(function (p) { return p.position_mm.z > 0; }).length,
         belegte_laenge_mm: Math.round(belegteLaenge),
         auslastung_volumen_pct: Math.round((100 * realVol) / cVol * 10) / 10,
         auslastung_stellflaeche_pct: Math.round(100 * Math.min(1, belegteLaenge / c.L) * 10) / 10,
         auslastung_gewicht_pct: Math.round((100 * gewicht) / c.maxKg * 10) / 10,
       };
     });
+    return { containerJson: containerJson, einbringWarnungen: einbringWarnungen };
+  }
 
-    var gesamtGewicht = 0, anzahlPaletten = 0, sonderzahl = 0;
-    var gesamtGestapelt = 0, maxHubGesamt = 0;
+  function annahmenListe() {
+    return [
+      "Zwei Stapel-Attribute pro Palette: „darf man etwas draufstellen“ " +
+      "(traeger) und „kann selbst gewichtsmässig auf etwas gestellt werden“ " +
+      "(oben_ok) - fehlen beide, bleibt die Palette fix an ihrem Boden-Platz",
+      "Gruppen (\"muss untereinander gestapelt werden\"): Mitglieder werden " +
+      "nach Gewicht gepaart (schwerer unten) und immer direkt übereinander geplant",
+      "Rotation um die Hochachse (90°): erlaubt",
+      "Kippen / auf die Seite legen: nicht erlaubt (Höhe bleibt Höhe)",
+      "Ladetoleranz: +" + TOLERANZ_MM + " mm pro Dimension (nur Rechengrösse)",
+      "Stapeln nur bei ≥" + Math.round(MIN_AUFLAGE_ANTEIL * 100) +
+        "% Auflagefläche und wenn die obere Palette nicht schwerer ist als die untere",
+      "Einbringbarkeit geprüft: jede Palette lässt sich in Ladereihenfolge von " +
+        "der Türe her geradeaus an ihren Platz schieben, ohne über bereits " +
+        "geladene Ware gehoben zu werden",
+    ];
+  }
+
+  function containerHinweis(anzahl, minVolumen, minEinlagig) {
+    if (anzahl <= minVolumen) {
+      return "Optimum erreicht – bei diesem Volumen und Gewicht sind weniger " +
+        "Container rechnerisch nicht möglich.";
+    }
+    if (anzahl <= minEinlagig) {
+      return "Untergrenze der Grundfläche erreicht (" + minEinlagig +
+        " Container) – weniger geht nur, wenn mehr Paletten als stapelbar freigegeben werden.";
+    }
+    return anzahl + " Container. Rechnerische Untergrenze: " + minEinlagig +
+      " einlagig, " + minVolumen + " rein nach Volumen – zusätzliche Stapelfreigaben sparen Container.";
+  }
+
+  function planJson(containerTyp, spec, container, nichtLadbar, sonderfaelle, minVolumen, minEinlagig, sortierung, gruppenHinweise) {
+    var innen = spec.innenmass_mm;
+    var res = containerZuJson(container, sonderfaelle);
+    var containerJson = res.containerJson, einbringWarnungen = res.einbringWarnungen;
+
+    var gesamtGewicht = 0, anzahlPaletten = 0, sonderzahl = 0, gesamtGestapelt = 0, maxHubGesamt = 0, anzahlTraeger = 0;
     containerJson.forEach(function (c) {
       gesamtGewicht += c.gewicht_kg;
       anzahlPaletten += c.anzahl_paletten;
       gesamtGestapelt += c.anzahl_gestapelt;
       maxHubGesamt = Math.max(maxHubGesamt, c.max_hubhoehe_mm);
-      c.paletten.forEach(function (p) { if (p.sonderfall) sonderzahl += 1; });
+      c.paletten.forEach(function (p) {
+        if (p.sonderfall) sonderzahl += 1;
+        if (p.traeger) anzahlTraeger += 1;
+      });
     });
 
-    var anzahl = containerJson.length, containerHinweis;
-    if (anzahl <= minContainerVolumen) {
-      containerHinweis =
-        "Optimum erreicht – bei diesem Volumen und Gewicht sind weniger " +
-        "Container rechnerisch nicht möglich.";
-    } else if (anzahl <= minContainerEinlagig) {
-      containerHinweis =
-        "Untergrenze der Grundfläche erreicht (" + minContainerEinlagig +
-        " Container) – weniger geht nur, wenn mehr Paletten als stapelbar " +
-        "freigegeben werden.";
-    } else {
-      containerHinweis =
-        anzahl + " Container. Rechnerische Untergrenze: " + minContainerEinlagig +
-        " einlagig, " + minContainerVolumen + " rein nach Volumen – zusätzliche " +
-        "Stapelfreigaben sparen Container.";
-    }
-
+    var anzahl = containerJson.length;
     return {
       container_typ: containerTyp,
-      innenmass_mm: {
-        laenge: innen.laenge, breite: innen.breite, hoehe: innen.hoehe,
-      },
-      tueroeffnung_mm: {
-        breite: spec.tueroeffnung_mm.breite, hoehe: spec.tueroeffnung_mm.hoehe,
-      },
+      innenmass_mm: { laenge: innen.laenge, breite: innen.breite, hoehe: innen.hoehe },
+      tueroeffnung_mm: { breite: spec.tueroeffnung_mm.breite, hoehe: spec.tueroeffnung_mm.hoehe },
       max_zuladung_kg: spec.max_zuladung_kg,
       toleranz_mm: TOLERANZ_MM,
-      annahmen: [
-        "Stapelbarkeit: Vorschlag nach Kategorie, pro Palette übersteuerbar",
-        "Rotation um die Hochachse (90°): erlaubt",
-        "Kippen / auf die Seite legen: nicht erlaubt (Höhe bleibt Höhe)",
-        "Ladetoleranz: +" + TOLERANZ_MM + " mm pro Dimension (nur Rechengrösse)",
-        "Stapeln nur bei ≥" + Math.round(MIN_AUFLAGE_ANTEIL * 100) +
-          "% Auflagefläche und wenn die obere Palette nicht schwerer ist als die untere",
-        "Einbringbarkeit geprüft: jede Palette lässt sich in Ladereihenfolge von " +
-          "der Türe her geradeaus an ihren Platz schieben, ohne über bereits " +
-          "geladene Ware gehoben zu werden",
-      ],
+      annahmen: annahmenListe(),
+      gruppen_hinweise: gruppenHinweise || [],
       container: containerJson,
       nicht_ladbar: nichtLadbar,
       zusammenfassung: {
-        anzahl_container: containerJson.length,
+        anzahl_container: anzahl,
         anzahl_paletten: anzahlPaletten,
         gesamtgewicht_kg: Math.round(gesamtGewicht * 10) / 10,
         anzahl_nicht_ladbar: nichtLadbar.length,
         anzahl_sonderfaelle: sonderzahl,
-        // Vergleichswerte, damit die Volumen-Auslastung einordbar ist:
-        // "einlagig" = untere Schranke, wenn nichts gestapelt werden darf.
-        min_container_volumen: minContainerVolumen,
-        min_container_einlagig: minContainerEinlagig,
-        container_hinweis: containerHinweis,
-        sortierung: gewaehlteSortierung,
-        anzahl_stapelbar: ladbar.filter(function (s) { return s.stapelbar; }).length,
+        min_container_volumen: minVolumen,
+        min_container_einlagig: minEinlagig,
+        container_hinweis: containerHinweis(anzahl, minVolumen, minEinlagig),
+        sortierung: sortierung,
+        anzahl_traeger: anzahlTraeger,
         anzahl_gestapelt: gesamtGestapelt,
         max_hubhoehe_mm: maxHubGesamt,
         einbringbarkeit_ok: !einbringWarnungen.length,
         einbring_warnungen: einbringWarnungen,
       },
     };
+  }
+
+  function erstelleLadeplan(stuecke, containerTyp, maxContainer) {
+    var spec = CONTAINER_TYPEN[containerTyp];
+    if (!spec) throw new Error("Unbekannter Containertyp: " + containerTyp);
+
+    var vor = vorverarbeiten(stuecke, spec);
+    var min = mindestContainer(vor.ladbar, spec);
+
+    var container = [], sortierung = SORTIERUNGEN[0].name;
+    if (vor.ladbar.length) {
+      var minDim = minDimFuer(vor.ladbar);
+      var obergrenze = maxContainer || vor.ladbar.length;
+      var lauf = multiStartPack(vor.ladbar, spec, obergrenze, minDim, Math.min(min.volumen, obergrenze), 1);
+      container = lauf.container;
+      sortierung = lauf.sortierung;
+      lauf.offen.forEach(function (s) {
+        vor.nichtLadbar.push(nichtLadbarEintrag(
+          s, "Konnte innerhalb der zulässigen Containeranzahl nicht regelkonform platziert werden", false
+        ));
+      });
+    }
+    container.forEach(sequenziere);
+
+    return planJson(containerTyp, spec, container, vor.nichtLadbar, vor.sonderfaelle, min.volumen, min.einlagig, sortierung, vor.gruppenHinweise);
+  }
+
+  /* Prioritaets-Kaskade: siehe ladeplan/packer.py::erstelle_ladeplan_kaskade
+   * fuer die ausfuehrliche Beschreibung - Logik muss identisch bleiben. */
+  function erstelleLadeplanKaskade(stuecke, containerTyp, stufen, maxContainer) {
+    var spec = CONTAINER_TYPEN[containerTyp];
+    if (!spec) throw new Error("Unbekannter Containertyp: " + containerTyp);
+
+    var alleContainer = [];
+    var nichtLadbarJeStufe = {}, sonderfaelleGesamt = {}, gruppenHinweiseGesamt = [];
+    var minJeStufe = {}, sortierungJeStufe = {};
+    var alleLadbarFuerMinDim = [];
+
+    stufen.forEach(function (label) {
+      var tierStuecke = stuecke.filter(function (s) { return s.prioritaet === label; });
+      var vor = vorverarbeiten(tierStuecke, spec);
+      nichtLadbarJeStufe[label] = vor.nichtLadbar;
+      Object.keys(vor.sonderfaelle).forEach(function (k) { sonderfaelleGesamt[k] = vor.sonderfaelle[k]; });
+      gruppenHinweiseGesamt = gruppenHinweiseGesamt.concat(vor.gruppenHinweise);
+      minJeStufe[label] = mindestContainer(vor.ladbar, spec);
+      alleLadbarFuerMinDim = alleLadbarFuerMinDim.concat(vor.ladbar);
+
+      var minDim = minDimFuer(alleLadbarFuerMinDim);
+
+      // Schritt 1: Restplatz bestehender Container fuellen (deterministisch:
+      // dieselbe erste Standard-Sortierung wie in Python).
+      var rest = [];
+      var sortiert = vor.ladbar.slice().sort(SORTIERUNGEN[0].cmp);
+      sortiert.forEach(function (stueck) {
+        var gesetzt = false;
+        for (var i = 0; i < alleContainer.length; i++) {
+          var treffer = alleContainer[i].findePlatz(stueck);
+          if (treffer) {
+            alleContainer[i].platziere(treffer, minDim);
+            gesetzt = true;
+            break;
+          }
+        }
+        if (!gesetzt) rest.push(stueck);
+      });
+
+      // Schritt 2: neue Container fuer den Rest (Multi-Start wie gehabt).
+      var obergrenze = maxContainer || (rest.length ? rest.length : 1);
+      var minVolTier = minJeStufe[label].volumen;
+      var lauf = multiStartPack(
+        rest, spec, obergrenze, minDim, Math.min(Math.max(1, minVolTier), obergrenze), alleContainer.length + 1
+      );
+      lauf.container.forEach(function (c) { c.erstelltStufe = label; });
+      alleContainer = alleContainer.concat(lauf.container);
+      sortierungJeStufe[label] = lauf.sortierung;
+
+      lauf.offen.forEach(function (s) {
+        nichtLadbarJeStufe[label].push(nichtLadbarEintrag(
+          s, "Konnte innerhalb der zulässigen Containeranzahl nicht regelkonform platziert werden", false
+        ));
+      });
+    });
+
+    alleContainer.forEach(sequenziere);
+
+    var plaene = {};
+    stufen.forEach(function (label, idx) {
+      var stufenContainer = alleContainer.filter(function (c) { return c.erstelltStufe === label; });
+      var min = minJeStufe[label] || { volumen: 0, einlagig: 0 };
+      plaene[label] = planJson(
+        containerTyp, spec, stufenContainer, nichtLadbarJeStufe[label] || [],
+        sonderfaelleGesamt, min.volumen, min.einlagig,
+        sortierungJeStufe[label] || SORTIERUNGEN[0].name,
+        idx === 0 ? gruppenHinweiseGesamt : []
+      );
+    });
+    return plaene;
   }
 
   /* Baut aus Katalogeintraegen + Mengen die Einzelstuecke. */
@@ -2129,6 +2384,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         fehlend.push(nr + " (Masse fehlen)");
         return;
       }
+      var traeger = eintrag.traeger !== undefined ? eintrag.traeger : typ.traeger;
+      var obenOk = eintrag.oben_ok !== undefined ? eintrag.oben_ok : typ.oben_ok;
+      if (traeger === undefined && obenOk === undefined) {
+        // Rueckwaerts-kompatibel: alte Datenstruktur kennt nur `stapelbar`.
+        var legacy = !!(eintrag.stapelbar !== undefined ? eintrag.stapelbar : typ.stapelbar);
+        traeger = legacy; obenOk = legacy;
+      }
       for (var i = 0; i < menge; i++) {
         stuecke.push({
           uid: menge === 1 ? nr : nr + "#" + (i + 1),
@@ -2139,7 +2401,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
           laenge_mm: typ.laenge_mm,
           breite_mm: typ.breite_mm,
           hoehe_mm: typ.hoehe_mm,
-          stapelbar: !!(eintrag.stapelbar !== undefined ? eintrag.stapelbar : typ.stapelbar),
+          traeger: !!traeger,
+          oben_ok: !!obenOk,
+          gruppe: typ.gruppe || null,
+          prioritaet: typ.prioritaet || null,
+          lieferdatum: typ.lieferdatum || null,
           rotation_erlaubt: true,
         });
       }
@@ -2155,6 +2421,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     kategorieFarbe: kategorieFarbe,
     stapelbarVorschlag: stapelbarVorschlag,
     erstelleLadeplan: erstelleLadeplan,
+    erstelleLadeplanKaskade: erstelleLadeplanKaskade,
     stueckeAusAuswahl: stueckeAusAuswahl,
   };
 
@@ -2798,17 +3065,27 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
   var katalog = {};      // nr -> Palettentyp
   var reihenfolge = [];  // nr in Listenreihenfolge
-  var auswahl = {};      // nr -> { menge, stapelbar }
-  var plan = null;
+  var auswahl = {};      // nr -> { menge, traeger, oben_ok }
+  var plan = null;               // aktuell angezeigter Ladeplan (eine Stufe)
+  var plaeneAlle = null;         // bei Prioritaets-Kaskade: { stufe -> Ladeplan }
+  var stufenListe = [];          // Reihenfolge der Stufen-Label, z.B. ["A","B","C"]
+  var stufenDatum = {};          // Stufen-Label -> Anzeige-Datum (aus der Excel-Liste)
+  var aktuelleStufe = null;
   var viewer = null;
   var quelldatei = "";
 
   var $ = function (id) { return document.getElementById(id); };
 
-  /* Basisname fuer Exportdateien, abgeleitet vom Namen der Excel-Liste. */
+  /* Basisname fuer Exportdateien, abgeleitet vom Namen der Excel-Liste - bei
+   * einer Prioritaets-Kaskade zusaetzlich mit der aktuellen Stufe/dem Datum. */
   function dateiBasis() {
     var name = (quelldatei || "Ladeplan").replace(/\.[^.]+$/, "");
-    return name.replace(/[\\/:*?"<>|]+/g, "_").slice(0, 60) || "Ladeplan";
+    var basis = name.replace(/[\\/:*?"<>|]+/g, "_").slice(0, 60) || "Ladeplan";
+    if (plaeneAlle && aktuelleStufe) {
+      var datum = (stufenDatum[aktuelleStufe] || "").replace(/[\\/:*?"<>|.\s]+/g, "-");
+      basis += "_" + aktuelleStufe + (datum ? "_" + datum : "");
+    }
+    return basis;
   }
 
   // ------------------------------------------------------------ Excel lesen
@@ -2822,6 +3099,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     ["breite_mm", [/breite/]],
     ["hoehe_mm", [/h(ö|oe|o)he/]],
     ["bestand", [/bestand/, /st(ü|ue|u)ck/, /menge/, /anzahl/]],
+    ["prioritaet", [/priorit(ä|ae|a)t/]],
+    ["gruppe", [/gruppen/, /muss.*untereinander/]],
+    ["traeger", [/aufstellen/]],
+    ["oben_ok", [/gewichtsm/]],
+    ["lieferdatum", [/liefertermin/, /versanddatum/]],
     ["stapelbar", [/stapel/]],
   ];
 
@@ -2829,11 +3111,18 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return v === null || v === undefined ? "" : String(v).replace(/\s+/g, " ").trim().toLowerCase();
   }
 
+  /* Beide Prioritaets-/Lieferdatum-Spalten der echten Vorlage heissen
+   * woertlich gleich "Lieferdatum" (eine traegt Buchstaben-Kuerzel wie
+   * "A".."E", die andere echte Datumswerte) - beide Spalten-Indizes werden
+   * hier gesammelt und weiter unten anhand der Zellinhalte auseinander-
+   * gehalten (siehe klassifiziereLieferdatumSpalten). */
   function findeSpalten(zeile) {
     var map = {};
+    var lieferdatumSpalten = [];
     for (var i = 0; i < zeile.length; i++) {
       var titel = norm(zeile[i]);
       if (!titel) continue;
+      if (/lieferdatum/.test(titel)) lieferdatumSpalten.push(i);
       for (var m = 0; m < MUSTER.length; m++) {
         var feld = MUSTER[m][0];
         if (map[feld] !== undefined) continue;
@@ -2841,7 +3130,77 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         if (treffer) { map[feld] = i; break; }
       }
     }
+    map._lieferdatumSpalten = lieferdatumSpalten;
     return map;
+  }
+
+  /* Anteil der (nicht-leeren) Zellen einer Spalte, die wie ein kurzer
+   * Buchstaben-Code (Prioritaets-Stufe, z.B. "A") statt wie ein Datum
+   * aussehen - anhand der ersten paar Dutzend Datenzeilen geschaetzt. */
+  function prioritaetsAnteil(zeilen, kopfIdx, idx) {
+    var treffer = 0, geprueft = 0;
+    for (var r = kopfIdx + 1; r < Math.min(zeilen.length, kopfIdx + 60); r++) {
+      var v = (zeilen[r] || [])[idx];
+      if (v === null || v === undefined || v === "") continue;
+      geprueft += 1;
+      if (/^[A-Za-z]{1,2}$/.test(String(v).trim())) treffer += 1;
+    }
+    return geprueft ? treffer / geprueft : 0;
+  }
+
+  /* Ordnet die per Titel gefundenen "Lieferdatum"-Spalten inhaltlich zu:
+   * die mit ueberwiegend kurzen Buchstaben-Codes ist die Prioritaet, eine
+   * evtl. weitere ist das tatsaechliche Lieferdatum. Explizit anders
+   * benannte Spalten (prioritaet/lieferdatum aus MUSTER) haben Vorrang und
+   * werden nicht ueberschrieben. */
+  function klassifiziereLieferdatumSpalten(spalten, zeilen, kopfIdx) {
+    var kandidaten = (spalten._lieferdatumSpalten || []).slice();
+    if (!kandidaten.length) return;
+    var bewertet = kandidaten.map(function (idx) {
+      return { idx: idx, anteil: prioritaetsAnteil(zeilen, kopfIdx, idx) };
+    });
+    bewertet.sort(function (a, b) { return b.anteil - a.anteil; });
+    if (bewertet.length === 1) {
+      // Nur eine Spalte: Inhalt entscheidet, ob Prioritaet oder Lieferdatum.
+      if (bewertet[0].anteil >= 0.5) {
+        if (spalten.prioritaet === undefined) spalten.prioritaet = bewertet[0].idx;
+      } else if (spalten.lieferdatum === undefined) {
+        spalten.lieferdatum = bewertet[0].idx;
+      }
+      return;
+    }
+    if (spalten.prioritaet === undefined) spalten.prioritaet = bewertet[0].idx;
+    if (spalten.lieferdatum === undefined) spalten.lieferdatum = bewertet[bewertet.length - 1].idx;
+  }
+
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+  /* Formatiert einen Excel-Zellwert als lesbares Datum fuer Anzeige/
+   * Dateinamen. Deckt zwei Faelle ab, die in der Praxis beide vorkommen:
+   *  - ein echtes Excel-Datum (Date-Objekt, oder als Zahl eine
+   *    Datumsseriennummer - fuer heutige Jahre immer > 1000)
+   *  - von Hand als Dezimalzahl "Tag.Monat" eingetippte Werte (z.B. 18.11
+   *    fuer den 18. November) - kommt in der echten Vorlage in mehreren
+   *    Prioritaets-Stufen vor und ist KEIN Excel-Datumsserial, sondern
+   *    einfach die Zahl 18.11; ueber parse_date_code gelesen wuerde das
+   *    faelschlich zu Tag 18 des Jahres 1900. */
+  function formatDatum(v) {
+    if (v === null || v === undefined || v === "") return "";
+    if (v instanceof Date) {
+      return pad2(v.getDate()) + "." + pad2(v.getMonth() + 1) + "." + v.getFullYear();
+    }
+    if (typeof v === "number") {
+      if (v >= 1000 && window.XLSX && XLSX.SSF && XLSX.SSF.parse_date_code) {
+        var d = XLSX.SSF.parse_date_code(v);
+        if (d) return pad2(d.d) + "." + pad2(d.m) + "." + d.y;
+      }
+      var teile = String(v).split(".");
+      if (teile.length === 2) {
+        return pad2(parseInt(teile[0], 10)) + "." + pad2(parseInt(teile[1], 10)) + ".";
+      }
+      return String(v);
+    }
+    return String(v).trim();
   }
 
   function zahl(v) {
@@ -2925,6 +3284,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         "Kopfzeile mit z.B. 'Container-Nr.'."
       );
     }
+    klassifiziereLieferdatumSpalten(spalten, zeilen, kopfIdx);
 
     katalog = {};
     reihenfolge = [];
@@ -2942,7 +3302,32 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       gesehen[nr] = true;
 
       var kategorie = (hole("kategorie") ? String(hole("kategorie")).trim() : "") || "undefinierbar";
-      var stapelRoh = jaNein(hole("stapelbar"));
+
+      // Zwei Stapel-Attribute (traeger/oben_ok) ersetzen die alte einzelne
+      // "stapelbar"-Spalte - ist keines der beiden im Sheet vorhanden, wird
+      // rueckwaerts-kompatibel auf eine einzelne "Stapelbar"-Spalte
+      // zurueckgegriffen (alte Vorlagen bleiben so nutzbar).
+      var traegerRoh = jaNein(hole("traeger"));
+      var obenRoh = jaNein(hole("oben_ok"));
+      var traegerWert, obenWert, stapelAusListe;
+      if (spalten.traeger !== undefined || spalten.oben_ok !== undefined) {
+        traegerWert = traegerRoh === null ? LadeplanPacker.stapelbarVorschlag(kategorie) : traegerRoh;
+        obenWert = obenRoh === null ? LadeplanPacker.stapelbarVorschlag(kategorie) : obenRoh;
+        stapelAusListe = traegerRoh !== null || obenRoh !== null;
+      } else {
+        var stapelRoh = jaNein(hole("stapelbar"));
+        var legacyWert = stapelRoh === null ? LadeplanPacker.stapelbarVorschlag(kategorie) : stapelRoh;
+        traegerWert = legacyWert;
+        obenWert = legacyWert;
+        stapelAusListe = stapelRoh !== null;
+      }
+
+      var gruppeRoh = hole("gruppe");
+      var gruppe = gruppeRoh ? String(gruppeRoh).trim() : "";
+      var prioritaetRoh = hole("prioritaet");
+      var prioritaet = prioritaetRoh ? String(prioritaetRoh).trim().toUpperCase() : "";
+      var lieferdatum = formatDatum(hole("lieferdatum"));
+
       var eintrag = {
         nr: nr,
         bezeichnung: String(hole("bezeichnung") || "").replace(/\s*\n\s*/g, " / ").trim(),
@@ -2954,10 +3339,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         breite_mm: Math.round(zahl(hole("breite_mm")) || 0) || null,
         hoehe_mm: Math.round(zahl(hole("hoehe_mm")) || 0) || null,
         bestand: Math.max(1, Math.round(zahl(hole("bestand")) || 1)),
-        stapelbar: stapelRoh === null ? LadeplanPacker.stapelbarVorschlag(kategorie) : stapelRoh,
-        stapel_aus_liste: stapelRoh !== null,
-        stapel_vorschlag: stapelRoh === null
-          ? LadeplanPacker.stapelbarVorschlag(kategorie) : stapelRoh,
+        traeger: traegerWert,
+        oben_ok: obenWert,
+        stapel_aus_liste: stapelAusListe,
+        stapel_vorschlag: LadeplanPacker.stapelbarVorschlag(kategorie),
+        gruppe: gruppe || null,
+        prioritaet: prioritaet || null,
+        lieferdatum: lieferdatum || null,
       };
       katalog[nr] = eintrag;
       reihenfolge.push(nr);
@@ -2975,8 +3363,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       else if (strategie === "keine") wert = false;
       else if (strategie === "flach") wert = !!p.hoehe_mm && p.hoehe_mm <= 1200;
       else wert = p.stapel_vorschlag;          // "kategorie"
-      p.stapelbar = wert;
-      if (auswahl[nr]) auswahl[nr].stapelbar = wert;
+      p.traeger = wert;
+      p.oben_ok = wert;
+      if (auswahl[nr]) { auswahl[nr].traeger = wert; auswahl[nr].oben_ok = wert; }
     });
   }
 
@@ -2984,6 +3373,25 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     var set = {};
     reihenfolge.forEach(function (nr) { set[katalog[nr].kategorie] = true; });
     return Object.keys(set).sort();
+  }
+
+  /* Alle in der Liste vorkommenden Prioritaets-Stufen, sortiert (A, B, C, …). */
+  function prioritaeten() {
+    var set = {};
+    reihenfolge.forEach(function (nr) {
+      if (katalog[nr].prioritaet) set[katalog[nr].prioritaet] = true;
+    });
+    return Object.keys(set).sort();
+  }
+
+  /* Anzeige-Lieferdatum einer Prioritaets-Stufe (erste Palette dieser Stufe
+   * mit gesetztem Lieferdatum). */
+  function datumFuerPrioritaet(label) {
+    for (var i = 0; i < reihenfolge.length; i++) {
+      var p = katalog[reihenfolge[i]];
+      if (p.prioritaet === label && p.lieferdatum) return p.lieferdatum;
+    }
+    return "";
   }
 
   function zeichneFilter() {
@@ -2994,15 +3402,39 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       o.value = k; o.textContent = k;
       sel.appendChild(o);
     });
+    zeichneStufenFilter();
+  }
+
+  /* Blendet den Prioritaets-Filter nur ein, wenn die geladene Liste
+   * ueberhaupt Prioritaets-Stufen enthaelt. */
+  function zeichneStufenFilter() {
+    var sel = $("f-stufe");
+    var vorhanden = prioritaeten();
+    var aktuell = sel.value;
+    sel.innerHTML = '<option value="">Alle Prioritäten</option>';
+    if (!vorhanden.length) {
+      sel.classList.add("hidden");
+      return;
+    }
+    sel.classList.remove("hidden");
+    vorhanden.forEach(function (p) {
+      var o = document.createElement("option");
+      var datum = datumFuerPrioritaet(p);
+      o.value = p; o.textContent = "Priorität " + p + (datum ? " (" + datum + ")" : "");
+      sel.appendChild(o);
+    });
+    if (vorhanden.indexOf(aktuell) >= 0) sel.value = aktuell;
   }
 
   function sichtbareNrs() {
     var suche = norm($("f-suche").value);
     var kat = $("f-kategorie").value;
     var nurGewaehlt = $("f-gewaehlt").checked;
+    var stufe = $("f-stufe").value;
     return reihenfolge.filter(function (nr) {
       var p = katalog[nr];
       if (kat && p.kategorie !== kat) return false;
+      if (stufe && p.prioritaet !== stufe) return false;
       if (nurGewaehlt && !auswahl[nr]) return false;
       if (suche) {
         var heu = norm(p.nr + " " + p.bezeichnung + " " + p.kategorie + " " + p.lkw);
@@ -3030,7 +3462,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       cb.checked = gewaehlt;
       cb.disabled = !masseOk;
       cb.onchange = function () {
-        if (cb.checked) auswahl[nr] = { menge: 1, stapelbar: p.stapelbar };
+        if (cb.checked) auswahl[nr] = { menge: 1, traeger: p.traeger, oben_ok: p.oben_ok };
         else delete auswahl[nr];
         zeichneTabelle();
         aktualisiereFuss();
@@ -3069,26 +3501,44 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       tdMenge.appendChild(inp);
       tr.appendChild(tdMenge);
 
-      var tdStapel = document.createElement("td");
-      var sb = document.createElement("input");
-      sb.type = "checkbox";
-      sb.checked = gewaehlt ? auswahl[nr].stapelbar : p.stapelbar;
-      sb.title = p.stapel_aus_liste
+      var prioText = p.prioritaet ? p.prioritaet + (p.lieferdatum ? " (" + p.lieferdatum + ")" : "") : "–";
+      tr.appendChild(td(prioText));
+      tr.appendChild(td(p.gruppe || "–"));
+
+      var tdTraeger = document.createElement("td");
+      var cbT = document.createElement("input");
+      cbT.type = "checkbox";
+      cbT.checked = gewaehlt ? auswahl[nr].traeger : p.traeger;
+      cbT.title = p.stapel_aus_liste
         ? "Wert aus der Excel-Liste"
         : "Vorschlag nach Kategorie – hier übersteuerbar";
-      sb.onchange = function () {
-        p.stapelbar = sb.checked;
-        if (auswahl[nr]) auswahl[nr].stapelbar = sb.checked;
+      cbT.onchange = function () {
+        p.traeger = cbT.checked;
+        if (auswahl[nr]) auswahl[nr].traeger = cbT.checked;
       };
-      tdStapel.appendChild(sb);
+      tdTraeger.appendChild(cbT);
+      tr.appendChild(tdTraeger);
+
+      var tdOben = document.createElement("td");
+      var cbO = document.createElement("input");
+      cbO.type = "checkbox";
+      cbO.checked = gewaehlt ? auswahl[nr].oben_ok : p.oben_ok;
+      cbO.title = p.stapel_aus_liste
+        ? "Wert aus der Excel-Liste"
+        : "Vorschlag nach Kategorie – hier übersteuerbar";
+      cbO.onchange = function () {
+        p.oben_ok = cbO.checked;
+        if (auswahl[nr]) auswahl[nr].oben_ok = cbO.checked;
+      };
+      tdOben.appendChild(cbO);
       if (!p.stapel_aus_liste) {
         var hint = document.createElement("span");
         hint.className = "pill";
         hint.textContent = "Vorschlag";
         hint.style.marginLeft = "6px";
-        tdStapel.appendChild(hint);
+        tdOben.appendChild(hint);
       }
-      tr.appendChild(tdStapel);
+      tr.appendChild(tdOben);
 
       frag.appendChild(tr);
     });
@@ -3124,7 +3574,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     $("m-laenge").value = "";
     $("m-breite").value = "";
     $("m-hoehe").value = "";
-    $("m-stapelbar").checked = false;
+    $("m-gruppe").value = "";
+    $("m-traeger").checked = false;
+    $("m-oben").checked = false;
     $("m-fehler").textContent = "";
     var dl = $("m-kategorien");
     dl.innerHTML = "";
@@ -3133,6 +3585,24 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       o.value = k;
       dl.appendChild(o);
     });
+    // Ist die geladene Liste in Prioritaets-Stufen aufgeteilt, muss auch eine
+    // manuell ergaenzte Palette einer Stufe zugeordnet werden - sonst wuerde
+    // sie in keinem der Ladeplaene der Kaskade auftauchen.
+    var stufen = prioritaeten();
+    var feld = $("m-prioritaet-feld"), sel = $("m-prioritaet");
+    if (stufen.length) {
+      feld.classList.remove("hidden");
+      sel.innerHTML = "";
+      stufen.forEach(function (s) {
+        var o = document.createElement("option");
+        var datum = datumFuerPrioritaet(s);
+        o.value = s; o.textContent = "Priorität " + s + (datum ? " (" + datum + ")" : "");
+        sel.appendChild(o);
+      });
+    } else {
+      feld.classList.add("hidden");
+      sel.innerHTML = "";
+    }
     $("modal-manuell").classList.remove("hidden");
     $("m-nr").focus();
   }
@@ -3157,6 +3627,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     }
     var kategorie = $("m-kategorie").value.trim() || "undefinierbar";
     var gewichtRoh = zahl($("m-gewicht").value);
+    var stufen = prioritaeten();
+    var prioritaet = stufen.length ? $("m-prioritaet").value : null;
     var eintrag = {
       nr: nr,
       bezeichnung: $("m-bezeichnung").value.trim(),
@@ -3168,14 +3640,18 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       breite_mm: breite,
       hoehe_mm: hoehe,
       bestand: Math.max(1, Math.round(zahl($("m-bestand").value) || 1)),
-      stapelbar: $("m-stapelbar").checked,
+      traeger: $("m-traeger").checked,
+      oben_ok: $("m-oben").checked,
       stapel_aus_liste: true,
       stapel_vorschlag: LadeplanPacker.stapelbarVorschlag(kategorie),
+      gruppe: $("m-gruppe").value.trim() || null,
+      prioritaet: prioritaet || null,
+      lieferdatum: prioritaet ? (datumFuerPrioritaet(prioritaet) || null) : null,
       manuell: true,
     };
     katalog[nr] = eintrag;
     reihenfolge.push(nr);
-    auswahl[nr] = { menge: eintrag.bestand, stapelbar: eintrag.stapelbar };
+    auswahl[nr] = { menge: eintrag.bestand, traeger: eintrag.traeger, oben_ok: eintrag.oben_ok };
 
     schliesseManuellModal();
     zeichneFilter();
@@ -3189,26 +3665,83 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   }
 
   // --------------------------------------------------------------- Rechnen
+  /* Baut die Tab-Leiste zum Umschalten zwischen den Prioritaets-Ladeplaenen -
+   * bleibt leer/versteckt, wenn keine Kaskade aktiv ist oder nur eine Stufe
+   * existiert (dann gibt es nichts zum Umschalten). */
+  function zeichnePlanStufenLeiste() {
+    var halter = $("plan-stufen");
+    halter.innerHTML = "";
+    if (!plaeneAlle || stufenListe.length < 2) {
+      halter.classList.add("hidden");
+      return;
+    }
+    halter.classList.remove("hidden");
+    stufenListe.forEach(function (label) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn" + (label === aktuelleStufe ? " btn-prim" : "");
+      btn.textContent = "Priorität " + label + (stufenDatum[label] ? " · " + stufenDatum[label] : "");
+      btn.addEventListener("click", function () { zeigePlanStufe(label); });
+      halter.appendChild(btn);
+    });
+  }
+
+  /* Zeigt einen bestimmten Ladeplan (bei Kaskade: eine Prioritaets-Stufe) in
+   * der 3D-Ansicht an und aktualisiert Kopfzeile + Tab-Leiste. */
+  function zeigePlanStufe(label) {
+    if (plaeneAlle) {
+      if (!plaeneAlle[label]) return;
+      aktuelleStufe = label;
+      plan = plaeneAlle[label];
+    }
+    var z = plan.zusammenfassung;
+    $("plan-info").textContent =
+      (plaeneAlle ? "Priorität " + aktuelleStufe +
+        (stufenDatum[aktuelleStufe] ? " (" + stufenDatum[aktuelleStufe] + ")" : "") + " · " : "") +
+      z.anzahl_container + " Container · " + z.anzahl_paletten + " Paletten · " +
+      Math.round(z.gesamtgewicht_kg).toLocaleString("de-CH") + " kg" +
+      (z.anzahl_nicht_ladbar ? " · " + z.anzahl_nicht_ladbar + " nicht ladbar" : "");
+    $("viewer").innerHTML = "";
+    viewer = LadeplanViewer.init($("viewer"), plan);
+    window.dispatchEvent(new Event("resize"));
+    zeichnePlanStufenLeiste();
+  }
+
   function rechne() {
     var typ = $("containertyp").value;
     var liste = reihenfolge
       .filter(function (nr) { return auswahl[nr]; })
       .map(function (nr) {
-        return { nr: nr, menge: auswahl[nr].menge, stapelbar: auswahl[nr].stapelbar };
+        return { nr: nr, menge: auswahl[nr].menge, traeger: auswahl[nr].traeger, oben_ok: auswahl[nr].oben_ok };
       });
     var stuecke = LadeplanPacker.stueckeAusAuswahl(katalog, liste);
-    plan = LadeplanPacker.erstelleLadeplan(stuecke, typ);
+
+    var hatStufen = stuecke.some(function (s) { return s.prioritaet; });
+    if (hatStufen) {
+      var vorhanden = {};
+      stuecke.forEach(function (s) { if (s.prioritaet) vorhanden[s.prioritaet] = true; });
+      stufenListe = Object.keys(vorhanden).sort();
+      plaeneAlle = LadeplanPacker.erstelleLadeplanKaskade(stuecke, typ, stufenListe);
+      stufenDatum = {};
+      stufenListe.forEach(function (label) {
+        var beispiel = stuecke.filter(function (s) { return s.prioritaet === label && s.lieferdatum; })[0];
+        stufenDatum[label] = beispiel ? beispiel.lieferdatum : "";
+      });
+      aktuelleStufe = stufenListe[0];
+      plan = plaeneAlle[aktuelleStufe];
+    } else {
+      plaeneAlle = null;
+      stufenListe = [];
+      stufenDatum = {};
+      aktuelleStufe = null;
+      plan = LadeplanPacker.erstelleLadeplan(stuecke, typ);
+    }
+
     $("ansicht-auswahl").classList.add("hidden");
     $("ansicht-plan").classList.remove("hidden");
     $("kopf-plan").classList.remove("hidden");
     $("kopf-auswahl").classList.add("hidden");
-    var z = plan.zusammenfassung;
-    $("plan-info").textContent =
-      z.anzahl_container + " Container · " + z.anzahl_paletten + " Paletten · " +
-      Math.round(z.gesamtgewicht_kg).toLocaleString("de-CH") + " kg" +
-      (z.anzahl_nicht_ladbar ? " · " + z.anzahl_nicht_ladbar + " nicht ladbar" : "");
-    viewer = LadeplanViewer.init($("viewer"), plan);
-    window.dispatchEvent(new Event("resize"));
+    zeigePlanStufe(aktuelleStufe);
   }
 
   function zurueck() {
@@ -3218,6 +3751,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     $("kopf-auswahl").classList.remove("hidden");
     $("viewer").innerHTML = "";
     viewer = null;
+    plan = null;
+    plaeneAlle = null;
+    stufenListe = [];
+    stufenDatum = {};
+    aktuelleStufe = null;
+    $("plan-stufen").innerHTML = "";
+    $("plan-stufen").classList.add("hidden");
   }
 
   // --------------------------------------------------------------- Exporte
@@ -3293,9 +3833,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       ["Innenmass (mm)", plan.innenmass_mm.laenge + " × " + plan.innenmass_mm.breite + " × " + plan.innenmass_mm.hoehe],
       ["Ladetoleranz (mm)", plan.toleranz_mm],
       ["Max. Zuladung (kg)", plan.max_zuladung_kg],
-      [],
-      ["Container", "Typ", "Paletten", "Gewicht (kg)", "Auslastung Vol. %", "Auslastung Gew. %", "Belegte Länge (mm)", "Hinweise"],
     ];
+    if (plaeneAlle && aktuelleStufe) {
+      zus.push(["Prioritäts-Stufe", aktuelleStufe +
+        (stufenDatum[aktuelleStufe] ? " (Lieferdatum " + stufenDatum[aktuelleStufe] + ")" : "")]);
+    }
+    zus.push([]);
+    zus.push(["Container", "Typ", "Paletten", "Gewicht (kg)", "Auslastung Vol. %", "Auslastung Gew. %", "Belegte Länge (mm)", "Hinweise"]);
     plan.container.forEach(function (c) {
       var sonder = c.paletten.filter(function (p) { return p.sonderfall; })
         .map(function (p) { return p.paletten_nr; });
@@ -3314,8 +3858,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     zus.push(["Containerzahl und Einbringbarkeit"]);
     zus.push([plan.zusammenfassung.container_hinweis || ""]);
     zus.push([
-      plan.zusammenfassung.anzahl_stapelbar + " von " + plan.zusammenfassung.anzahl_paletten +
-      " Paletten sind als stapelbar freigegeben, " + plan.zusammenfassung.anzahl_gestapelt +
+      plan.zusammenfassung.anzahl_traeger + " von " + plan.zusammenfassung.anzahl_paletten +
+      " Paletten sind als Träger (darf man etwas draufstellen) freigegeben, " +
+      plan.zusammenfassung.anzahl_gestapelt +
       " stehen tatsächlich in zweiter Lage. Grösste Hubhöhe: " +
       plan.zusammenfassung.max_hubhoehe_mm + " mm.",
     ]);
@@ -3327,6 +3872,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         : "ACHTUNG – Einbringbarkeit: " +
           (plan.zusammenfassung.einbring_warnungen || []).join(" | "),
     ]);
+    if (plan.gruppen_hinweise && plan.gruppen_hinweise.length) {
+      zus.push([]);
+      zus.push(["Hinweise zu Gruppen-Stapelungen"]);
+      plan.gruppen_hinweise.forEach(function (h) { zus.push(["• " + h]); });
+    }
     zus.push([]);
     zus.push(["Annahmen der Berechnung"]);
     plan.annahmen.forEach(function (a) { zus.push(["• " + a]); });
@@ -3341,7 +3891,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     var kopf = ["Container", "Lade-Nr.", "Paletten-Nr.", "Kategorie", "Bezeichnung", "Gewicht (kg)",
       "Länge (mm)", "Breite (mm)", "Höhe (mm)", "Pos. X (mm)", "Pos. Y (mm)", "Pos. Z (mm)",
-      "Hubhöhe (mm)", "Gedreht", "Stapelbar", "Gestapelt auf", "Sonderfall / Hinweis"];
+      "Hubhöhe (mm)", "Gedreht", "Träger", "Oben", "Gruppe", "Gestapelt auf", "Sonderfall / Hinweis"];
     var zeilen = [kopf];
     plan.container.forEach(function (c) {
       c.paletten.forEach(function (p) {
@@ -3349,13 +3899,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
           c.container_id, p.lade_sequenz, p.paletten_nr, p.kategorie, p.bezeichnung, p.gewicht_kg,
           p.reale_masse_mm.laenge, p.reale_masse_mm.breite, p.reale_masse_mm.hoehe,
           p.position_mm.x, p.position_mm.y, p.position_mm.z, p.hubhoehe_mm,
-          p.rotiert ? "ja" : "nein", p.stapelbar ? "ja" : "nein",
-          p.gestapelt_auf || "", p.sonderfall || "",
+          p.rotiert ? "ja" : "nein", p.traeger ? "ja" : "nein", p.oben_ok ? "ja" : "nein",
+          p.gruppe || "", p.gestapelt_auf || "", p.sonderfall || "",
         ]);
       });
     });
     var wsL = XLSX.utils.aoa_to_sheet(zeilen);
-    wsL["!cols"] = kopf.map(function (h, i) { return { wch: i === 4 ? 52 : i === 16 ? 34 : 12 }; });
+    wsL["!cols"] = kopf.map(function (h) { return { wch: h === "Bezeichnung" ? 52 : h === "Sonderfall / Hinweis" ? 34 : 12 }; });
     wsL["!freeze"] = { xSplit: 0, ySplit: 1 };
     XLSX.utils.book_append_sheet(wb, wsL, "Ladeplan");
 
@@ -3381,15 +3931,21 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   function exportVorlage() {
     var wb = XLSX.utils.book_new();
     var kopf = ["Container-Nr.", "LKW", "Kategorie", "Bezeichnung", "Gewicht (kg)",
-      "Länge (mm)", "Breite (mm)", "Höhe (mm)", "Bestand", "Stapelbar"];
+      "Länge (mm)", "Breite (mm)", "Höhe (mm)", "Bestand",
+      "Priorität (Lieferdatum-Kürzel)", "Lieferdatum",
+      "Muss Untereinander gestapelt werden (Gruppen)",
+      "Stapelbar (man darf etwas draufstellen)", "Man kann es Gewichtsmässig auf etwas stellen"];
     var beispiele = [
-      ["01_01", "LKW 1", "Möbel", "Beispiel: Theke Eiche, Ablage weiss", 180, 1550, 950, 1300, 1, "nein"],
-      ["01_02", "LKW 1", "Boden", "Beispiel: Bodenplatten, Stapel", 420, 2000, 1000, 900, 3, "ja"],
+      ["01_01", "LKW 1", "Möbel", "Beispiel: Theke Eiche, Ablage weiss", 180, 1550, 950, 1300, 1,
+        "", "", "", "", ""],
+      ["01_02", "LKW 1", "Boden", "Beispiel: Bodenplatten, Stapel", 420, 2000, 1000, 900, 3,
+        "A", "15.11.2026", "", "X", "X"],
     ];
     var rows = [kopf].concat(beispiele);
     var ws = XLSX.utils.aoa_to_sheet(rows);
     ws["!cols"] = [{ wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 42 }, { wch: 12 },
-      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
+      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 },
+      { wch: 16 }, { wch: 16 }, { wch: 16 }];
     ws["!freeze"] = { xSplit: 0, ySplit: 1 };
     XLSX.utils.book_append_sheet(wb, ws, "Etiketten Programm");
 
@@ -3403,15 +3959,31 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       ["Gewicht (kg)", "Zahl, pro Palette."],
       ["Länge/Breite/Höhe (mm)", "Reale Aussenmasse der Palette – Pflichtfelder."],
       ["Bestand", "Stückzahl dieser Zeile. Leer = 1."],
-      ["Stapelbar", "ja / nein. Leer = automatischer Vorschlag nach Kategorie " +
-        "(Boden, Textile, Decke = stapelbar)."],
+      ["Priorität (Lieferdatum-Kürzel)", "Optional. Kurzer Buchstaben-Code (A, B, C, …) je " +
+        "Verladetermin. Bleibt die Spalte für alle Zeilen leer, wird ein einziger " +
+        "Ladeplan berechnet. Ist sie gefüllt, wird pro Stufe ein eigener, separat " +
+        "herunterladbarer Ladeplan berechnet - Stufe A zuerst, danach füllt Stufe B den " +
+        "Restplatz in A's Containern auf, usw. Nie darf eine frühere Stufe in einen " +
+        "späteren Plan rutschen."],
+      ["Lieferdatum", "Optional, das echte Verladedatum zur Priorität (z.B. 15.11.2026) - " +
+        "nur zur Anzeige/Beschriftung der Ladepläne."],
+      ["Muss Untereinander gestapelt werden (Gruppen)", "Optional. Paletten mit derselben " +
+        "Gruppen-Kennung (z.B. \"A\") werden als fixes Paar direkt übereinander geplant - " +
+        "die Software entscheidet selbst, welche der beiden unten/oben steht " +
+        "(schwerere Palette unten)."],
+      ["Stapelbar (man darf etwas draufstellen)", "X / ja / nein. Darf auf diese Palette " +
+        "etwas anderes daraufgestellt werden? Leer = automatischer Vorschlag nach Kategorie."],
+      ["Man kann es Gewichtsmässig auf etwas stellen", "X / ja / nein. Kann diese Palette " +
+        "selbst (gewichtsmässig) erhöht auf einer anderen stehen? Leer = automatischer " +
+        "Vorschlag nach Kategorie. Fehlen beide Häkchen, bleibt die Palette fix an ihrem " +
+        "Boden-Platz stehen."],
       [],
       ["Beispielzeilen oben können gelöscht werden – nur die Kopfzeile muss bleiben."],
       ["Diese Datei anschliessend hier per Drag-and-drop wieder reinziehen " +
         "oder über 'Excel-Liste wählen' laden."],
     ];
     var wsH = XLSX.utils.aoa_to_sheet(hinweise);
-    wsH["!cols"] = [{ wch: 26 }, { wch: 70 }];
+    wsH["!cols"] = [{ wch: 34 }, { wch: 90 }];
     XLSX.utils.book_append_sheet(wb, wsH, "Hinweise");
 
     XLSX.writeFile(wb, "Ladeplan_Vorlage.xlsx");
@@ -3484,6 +4056,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     $("f-suche").addEventListener("input", zeichneTabelle);
     $("f-kategorie").addEventListener("change", zeichneTabelle);
     $("f-gewaehlt").addEventListener("change", zeichneTabelle);
+    $("f-stufe").addEventListener("change", zeichneTabelle);
     $("f-stapel").addEventListener("change", function () {
       setzeStapelStrategie($("f-stapel").value);
       zeichneTabelle();
@@ -3492,7 +4065,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       sichtbareNrs().forEach(function (nr) {
         var p = katalog[nr];
         if (p.laenge_mm && p.breite_mm && p.hoehe_mm) {
-          auswahl[nr] = { menge: 1, stapelbar: p.stapelbar };
+          auswahl[nr] = { menge: 1, traeger: p.traeger, oben_ok: p.oben_ok };
         }
       });
       zeichneTabelle(); aktualisiereFuss();
