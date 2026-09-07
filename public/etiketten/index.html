@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>bw-tools.ch</title>
+<title>Etiketten · bw-tools</title>
 <style>
   :root {
     --bg: #050608;
@@ -11,15 +11,27 @@
     --panel-hover: #182030;
     --line: #242c38;
     --accent: #3e7bb6;
-    --accent-soft: rgba(62, 123, 182, .16);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); }
   body {
     min-height: 100vh;
-    display: flex; align-items: center; justify-content: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
     padding: 32px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
+
+  .head {
+    width: 100%; max-width: 760px;
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 22px;
+  }
+  .head a {
+    color: #7c8899; text-decoration: none; font-size: 13px;
+    border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px;
+  }
+  .head a:hover { color: #c7cfda; border-color: var(--accent); }
+  .head h1 { margin: 0; font-size: 15px; font-weight: 600; color: #c7cfda; letter-spacing: .02em; }
 
   .grid {
     display: grid;
@@ -51,11 +63,12 @@
   .tile .icon-wrap svg { width: 100%; height: 100%; }
 
   .tile .tile-label {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: clamp(11px, 2.6vw, 14px);
     font-weight: 500;
     letter-spacing: .01em;
     color: #c7cfda;
+    text-align: center;
+    padding: 0 6px;
   }
 
   .tile.placeholder { background: transparent; border: 1.5px dashed var(--line); cursor: default; }
@@ -64,60 +77,26 @@
 </head>
 <body>
 
+<div class="head">
+  <a href="/">‹ Start</a>
+  <h1>Etiketten</h1>
+</div>
+
 <div class="grid">
 
-  <a class="tile" href="/ladeplan/">
+  <a class="tile" href="paletten/">
     <span class="icon-wrap">
-      <!-- Container-Portalkran (Hafenkran) mit haengendem Container -->
+      <!-- Palette mit Etikett -->
       <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M8 34 V11" stroke="currentColor" stroke-width="2"/>
-        <path d="M32 34 V11" stroke="currentColor" stroke-width="2"/>
-        <path d="M5 11 H35" stroke="currentColor" stroke-width="2"/>
-        <path d="M4 34 H12 M28 34 H36" stroke="currentColor" stroke-width="2"/>
-        <rect x="16.5" y="9" width="7" height="3" rx="0.8" stroke="currentColor" stroke-width="1.4"/>
-        <path d="M20 12.5 V17" stroke="currentColor" stroke-width="1.4"/>
-        <rect x="11" y="17" width="18" height="11" rx="1.3" stroke="currentColor" stroke-width="2"/>
-        <path d="M15 17 V28 M20 17 V28 M25 17 V28" stroke="currentColor" stroke-width="1" opacity=".5"/>
+        <rect x="9" y="6" width="22" height="15" rx="1.6" stroke="currentColor" stroke-width="2"/>
+        <path d="M13 11 H27 M13 15 H23" stroke="currentColor" stroke-width="1.6" opacity=".75"/>
+        <path d="M5 27 H35" stroke="currentColor" stroke-width="2"/>
+        <path d="M5 33 H35" stroke="currentColor" stroke-width="2"/>
+        <path d="M8 27 V33 M20 27 V33 M32 27 V33" stroke="currentColor" stroke-width="2"/>
       </svg>
     </span>
-    <span class="tile-label">Ladeplan</span>
+    <span class="tile-label">Paletten</span>
   </a>
-
-  <a class="tile" href="/etiketten/">
-    <span class="icon-wrap">
-      <!-- Etikett / Anhaenger -->
-      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M20.5 5.5 H31.5 A3 3 0 0 1 34.5 8.5 V19.5 A3 3 0 0 1 33.6 21.6 L21.6 33.6 A3 3 0 0 1 17.4 33.6 L6.4 22.6 A3 3 0 0 1 6.4 18.4 L18.4 6.4 A3 3 0 0 1 20.5 5.5 Z" stroke="currentColor" stroke-width="2"/>
-        <circle cx="28" cy="12" r="2.6" stroke="currentColor" stroke-width="2"/>
-        <path d="M14 20 L20 26 M18 16 L24 22" stroke="currentColor" stroke-width="1.6" opacity=".55"/>
-      </svg>
-    </span>
-    <span class="tile-label">Etiketten</span>
-  </a>
-
-  <div class="tile placeholder" aria-disabled="true">
-    <span class="icon-wrap">
-      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="10" y="10" width="20" height="20" rx="4" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.5"/>
-      </svg>
-    </span>
-  </div>
-
-  <div class="tile placeholder" aria-disabled="true">
-    <span class="icon-wrap">
-      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="10" y="10" width="20" height="20" rx="4" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.5"/>
-      </svg>
-    </span>
-  </div>
-
-  <div class="tile placeholder" aria-disabled="true">
-    <span class="icon-wrap">
-      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="10" y="10" width="20" height="20" rx="4" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3.5"/>
-      </svg>
-    </span>
-  </div>
 
   <div class="tile placeholder" aria-disabled="true">
     <span class="icon-wrap">
