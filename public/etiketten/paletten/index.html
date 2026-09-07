@@ -3113,13 +3113,19 @@ function countMatches(headerRow) {
   return Object.values(m).filter(v => v != null).length;
 }
 
+// Die Beschriftung der eigenen Vorlage zählt immer als erster Alias,
+// damit eine heruntergeladene Vorlage garantiert wieder eingelesen wird.
+function aliasesOf(c) {
+  return [c.label].concat(c.aliases);
+}
+
 function mapColumns(headerRow) {
   const map = {};
   const taken = new Set();
   const hn = headerRow.map(norm);
   // 1) exakte Treffer
   COLS.forEach(c => {
-    for (const a of c.aliases) {
+    for (const a of aliasesOf(c)) {
       const na = norm(a);
       const idx = hn.findIndex((h, i) => h === na && !taken.has(i));
       if (idx >= 0) { map[c.key] = idx; taken.add(idx); return; }
@@ -3128,7 +3134,7 @@ function mapColumns(headerRow) {
   // 2) enthält-Treffer
   COLS.forEach(c => {
     if (map[c.key] != null) return;
-    for (const a of c.aliases) {
+    for (const a of aliasesOf(c)) {
       const na = norm(a);
       if (na.length < 3) continue;
       const idx = hn.findIndex((h, i) => h && !taken.has(i) && (h.startsWith(na) || na.startsWith(h) && h.length >= 4));
@@ -3619,14 +3625,27 @@ function init() {
   $("#file-xlsx").addEventListener("change", (e) => {
     const f = e.target.files[0];
     if (!f) return;
+    setStatus(`„${f.name}“ wird gelesen…`);
     const fr = new FileReader();
     fr.onload = () => {
-      try {
-        const wb = XLSX.read(new Uint8Array(fr.result), { type: "array" });
-        importWorkbook(wb);
-      } catch (err) {
-        setStatus("Import fehlgeschlagen: " + err.message, "err");
-      }
+      // kurz warten, damit der Status noch gezeichnet wird – das Einlesen
+      // blockiert die Oberfläche
+      setTimeout(() => {
+        try {
+          const wb = XLSX.read(new Uint8Array(fr.result), {
+            type: "array",
+            dense: true,        // spart Speicher bei vielen Zeilen
+            sheets: 0,          // nur das erste Blatt
+            cellFormula: false, // Formeln nicht parsen, nur die Werte
+            cellHTML: false,
+            cellStyles: false,
+            bookVBA: false
+          });
+          importWorkbook(wb);
+        } catch (err) {
+          setStatus("Import fehlgeschlagen: " + err.message, "err");
+        }
+      }, 30);
     };
     fr.readAsArrayBuffer(f);
     e.target.value = "";
