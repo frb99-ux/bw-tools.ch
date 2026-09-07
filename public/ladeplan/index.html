@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Container-Ladeplan · BrogleWorks</title>
+<title>Container-Ladeplan · bw-tools</title>
 <style id="app-css">:root {
   --bg: #0d1117;
   --panel: #151b23;
@@ -206,7 +206,7 @@ table.sel td.desc .clamp {
 <body>
 
 <div class="app-head">
-  <h1>Container-Ladeplan <span class="sub">BrogleWorks</span></h1>
+  <h1>Container-Ladeplan <span class="sub">bw-tools</span></h1>
 
   <div id="kopf-auswahl" style="display:flex;gap:10px;align-items:center;">
     <label class="lp-btn" style="position:relative;overflow:hidden;">
@@ -250,7 +250,7 @@ gehen zuerst die spätesten (unwichtigsten) Prioritäten leer aus – A/B/C/… 
 
     <div class="drop" id="drop">
       <h2>Palettenliste laden</h2>
-      <p>Excel-Datei im BrogleWorks-Format hierher ziehen oder oben auswählen.<br>
+      <p>Excel-Datei im bw-tools-Format hierher ziehen oder oben auswählen.<br>
          Erwartet werden die Spalten Container-/Artikel-Nr., Kategorie, Bezeichnung,
          Gewicht (kg) sowie Länge / Breite / Höhe (mm).</p>
       <span class="pill">Die Datei bleibt lokal im Browser – es wird nichts hochgeladen.</span>
@@ -1430,7 +1430,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
 } )();
 </script>
-<script id="js-packer">/* BrogleWorks Container-Ladeplan - Packalgorithmus (JS-Portierung von ladeplan/packer.py)
+<script id="js-packer">/* bw-tools Container-Ladeplan - Packalgorithmus (JS-Portierung von ladeplan/packer.py)
  *
  * Koordinatensystem: x = Laengsachse ab Rueckwand, y = Querachse ab linker
  * Seitenwand, z = Hoehe ab Boden.  Gerechnet wird mit effektiven Massen
@@ -2450,7 +2450,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   global.LadeplanPacker = API;
 })(typeof window !== "undefined" ? window : globalThis);
 </script>
-<script id="js-viewer">/* BrogleWorks Container-Ladeplan - 3D-Ansicht (three.js)
+<script id="js-viewer">/* bw-tools Container-Ladeplan - 3D-Ansicht (three.js)
  *
  * Rendert das Ladeplan-JSON (Abschnitt E) als massstabsgetreues 3D-Modell.
  * Einzige Datenquelle ist das uebergebene Plan-Objekt.
@@ -3078,7 +3078,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   };
 })(typeof window !== "undefined" ? window : globalThis);
 </script>
-<script id="js-app">/* BrogleWorks Container-Ladeplan - Browser-App
+<script id="js-app">/* bw-tools Container-Ladeplan - Browser-App
  * Excel einlesen -> Paletten waehlen -> rechnen -> 3D + Excel-Export.
  */
 (function () {
@@ -3802,7 +3802,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       return e ? e.textContent : "";
     }
     var daten = JSON.stringify(plan).replace(/<\//g, "<\\/");
-    var titel = "Ladeplan 3D · BrogleWorks";
+    var titel = "Ladeplan 3D · bw-tools";
 
     var html =
       "<!doctype html>\n<html lang=\"de\">\n<head>\n" +
@@ -3811,7 +3811,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       "<title>" + titel + "</title>\n" +
       "<style>" + inhalt("app-css") + "</style>\n</head>\n<body>\n" +
       "<div class=\"app-head\">\n" +
-      "  <h1>Ladeplan 3D <span class=\"sub\">BrogleWorks</span></h1>\n" +
+      "  <h1>Ladeplan 3D <span class=\"sub\">bw-tools</span></h1>\n" +
       "  <span class=\"sub\" id=\"plan-info\"></span>\n" +
       "  <span class=\"spacer\"></span>\n" +
       "  <label class=\"lp-btn\" style=\"position:relative;overflow:hidden;\">\n" +
@@ -3854,7 +3854,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     var wb = XLSX.utils.book_new();
 
     var zus = [
-      ["Container-Ladeplan BrogleWorks"],
+      ["Container-Ladeplan bw-tools"],
       ["Containertyp", plan.container_typ],
       ["Innenmass (mm)", plan.innenmass_mm.laenge + " × " + plan.innenmass_mm.breite + " × " + plan.innenmass_mm.hoehe],
       ["Ladetoleranz (mm)", plan.toleranz_mm],

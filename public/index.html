@@ -32,7 +32,8 @@
   }
 
   .tile {
-    display: flex; align-items: center; justify-content: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: clamp(6px, 1.8vw, 10px);
     aspect-ratio: 1 / 1;
     border-radius: 22px;
     background: var(--panel);
@@ -43,11 +44,19 @@
   a.tile:hover, a.tile:focus-visible { background: var(--panel-hover); border-color: var(--accent); transform: translateY(-3px); }
 
   .tile .icon-wrap {
-    width: 62%; height: 62%;
+    width: 54%; height: 54%;
     display: flex; align-items: center; justify-content: center;
     color: var(--accent);
   }
   .tile .icon-wrap svg { width: 100%; height: 100%; }
+
+  .tile .tile-label {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: clamp(11px, 2.6vw, 14px);
+    font-weight: 500;
+    letter-spacing: .01em;
+    color: #c7cfda;
+  }
 
   .tile.placeholder { background: transparent; border: 1.5px dashed var(--line); cursor: default; }
   .tile.placeholder .icon-wrap { color: #333d4a; }
@@ -71,6 +80,7 @@
         <path d="M15 17 V28 M20 17 V28 M25 17 V28" stroke="currentColor" stroke-width="1" opacity=".5"/>
       </svg>
     </span>
+    <span class="tile-label">Ladeplan</span>
   </a>
 
   <div class="tile placeholder" aria-disabled="true">
