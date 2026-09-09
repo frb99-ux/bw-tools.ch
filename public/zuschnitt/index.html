@@ -1206,9 +1206,12 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
      darueber, beide im gleichen Massstab, an der unteren linken Ecke
      ausgerichtet - so sieht man den Ueberstand sofort.
      Liefert zusaetzlich die Zeichenflaeche und den Ueberstand in mm. */
-  function passtNicht(platteMass, teil, breiteMm) {
-    // guenstigere Lage waehlen: die mit dem kleineren Ueberstand
-    var lagen = [[teil.l, teil.b], [teil.b, teil.l]];
+  function passtNicht(platteMass, teil, breiteMm, laufrichtung) {
+    // nur die erlaubten Lagen betrachten, sonst stimmt der Ueberstand nicht
+    var lagen;
+    if (laufrichtung === 'laengs')    lagen = [[teil.l, teil.b]];
+    else if (laufrichtung === 'quer') lagen = [[teil.b, teil.l]];
+    else                              lagen = [[teil.l, teil.b], [teil.b, teil.l]];
     var best = null;
     for (var i = 0; i < lagen.length; i++) {
       var ul = Math.max(0, lagen[i][0] - platteMass.l);
@@ -1424,12 +1427,12 @@ function zeigeFehler(t, scroll){
 }
 
 /* Bild "Teil passt nicht auf die Platte" */
-function zeigeZuGross(liste, platte){
+function zeigeZuGross(liste, platte, lr){
   var box=$('zugross');
   if(!liste.length){ box.style.display='none'; box.innerHTML=''; return; }
   box.innerHTML = liste.map(function(t){
     var W=150;
-    var lay=ZLayout.passtNicht(platte, t, W);
+    var lay=ZLayout.passtNicht(platte, t, W, lr);
     return '<div class="zgk">'+prims2svg(lay.prims, lay.breite, lay.hoehe)+
       '<div class="zgt">Pos. '+esc(t.pos)+' passt nicht'+
       (lay.ueberstand? ' – '+esc(lay.ueberstand) : '')+'</div></div>';
@@ -1493,7 +1496,7 @@ function rechnen(){
   } else {
     zeigeFehler('');
   }
-  zeigeZuGross(einzel, platte);
+  zeigeZuGross(einzel, platte, lr);
 
   if(!saetze.length){
     ERG=null; $('btnPdf').disabled=true;
