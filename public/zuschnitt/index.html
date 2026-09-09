@@ -927,9 +927,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       var rw = s.l * skala, rh = s.b * skala;
       prims.push({ t: 'rect', x: rx, y: ry, w: rw, h: rh, stroke: 0.35, grau: 0, fill: [225, 231, 238] });
 
-      // Beschriftung: Pos-Nummer gross, darunter Mass klein
+      // Beschriftung: Teilenummer gross (Pos-Laufnummer), darunter Mass klein
       var mass = fmt(s.l) + ' × ' + fmt(s.b);
-      var posTxt = String(s.pos);
+      var posTxt = s.label || String(s.pos);
       var gMax = Math.min(rh * 0.42, 4.2);
       var g1 = Math.min(gMax, (rw * 0.86) / (posTxt.length * 0.60));
       if (g1 >= 1.15) {
@@ -950,26 +950,67 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return (Math.round(v * 10) / 10).toString().replace(/\.0$/, '');
   }
 
-  /* Positionen einer Platte zu Zeilen "Pos 1: 430 x 410 mm - 4 Stk." buendeln */
+  /* Teile einer Platte buendeln -> Zeilen mit Nummernbereich,
+     z.B. {pos:'1', l:430, b:410, stk:8, von:1, bis:8} */
   function liste(teile) {
     var map = {}, order = [];
     for (var i = 0; i < teile.length; i++) {
       var t = teile[i];
       var kl = Math.max(t.l, t.b), kb = Math.min(t.l, t.b);
       var key = t.pos + '|' + kl + '|' + kb;
-      if (!map[key]) { map[key] = { pos: t.pos, l: kl, b: kb, stk: 0 }; order.push(key); }
+      if (!map[key]) { map[key] = { pos: t.pos, l: kl, b: kb, stk: 0, nrs: [] }; order.push(key); }
       map[key].stk++;
+      if (t.nr !== undefined) map[key].nrs.push(t.nr);
     }
     order.sort(function (a, c) {
       var A = map[a], C = map[c];
       var na = parseFloat(A.pos), nc = parseFloat(C.pos);
       if (!isNaN(na) && !isNaN(nc) && na !== nc) return na - nc;
-      return String(A.pos).localeCompare(String(C.pos));
+      var sa = String(A.pos).localeCompare(String(C.pos));
+      if (sa) return sa;
+      return (A.nrs[0] || 0) - (C.nrs[0] || 0);
     });
-    return order.map(function (k) { return map[k]; });
+    return order.map(function (k) {
+      var e = map[k];
+      if (e.nrs.length) {
+        e.von = Math.min.apply(null, e.nrs);
+        e.bis = Math.max.apply(null, e.nrs);
+      }
+      return e;
+    });
   }
 
-  return { plan: plan, liste: liste, fmt: fmt, mm2pt: mm2pt, PT: PT, textBreite: textBreite };
+  /* "1-1" bzw. "1-1 … 1-8" fuer eine Listenzeile */
+  function bereich(e) {
+    if (e.von === undefined) return 'Pos. ' + e.pos;
+    if (e.von === e.bis) return e.pos + '-' + e.von;
+    return e.pos + '-' + e.von + ' … ' + e.pos + '-' + e.bis;
+  }
+
+  /* Laufende Nummern vergeben: ueber alle Platten hinweg je Position
+     durchnummeriert, innerhalb einer Platte in Lesereihenfolge
+     (oben links zuerst). Setzt t.nr und t.label. */
+  function nummeriere(platten, platteB) {
+    var zaehler = {};
+    for (var b = 0; b < platten.length; b++) {
+      var teile = platten[b].teile.slice();
+      teile.sort(function (a, c) {
+        var da = (c.y + c.b) - (a.y + a.b);        // oberste Reihe zuerst
+        if (Math.abs(da) > 0.5) return da;
+        return a.x - c.x;                           // dann von links
+      });
+      for (var i = 0; i < teile.length; i++) {
+        var t = teile[i];
+        zaehler[t.pos] = (zaehler[t.pos] || 0) + 1;
+        t.nr = zaehler[t.pos];
+        t.label = t.pos + '-' + t.nr;
+      }
+    }
+    return platten;
+  }
+
+  return { plan: plan, liste: liste, bereich: bereich, nummeriere: nummeriere,
+           fmt: fmt, mm2pt: mm2pt, PT: PT, textBreite: textBreite };
 });
 
 </script>
@@ -1123,6 +1164,8 @@ function rechnen(){
     projekt:$('projekt').value.trim(), leiter:$('leiter').value.trim(),
     material:$('material').value.trim()
   };
+  // laufende Teilenummern (1-1, 1-2, ...) ueber alle Platten hinweg
+  ZLayout.nummeriere(alleBoards(ERG).map(function(o){ return o.pl; }));
   zeigeErgebnis();
 }
 
@@ -1296,9 +1339,9 @@ function baueDoc(){
       liste.forEach(function(e,i){
         var ty=ly2+i*zeilenH;
         doc.setFont('helvetica','bold'); doc.setFontSize(7.2);
-        doc.text('Pos. '+e.pos, lx, ty);
+        doc.text(ZLayout.bereich(e), lx, ty);
         doc.setFont('helvetica','normal'); doc.setFontSize(7.0);
-        doc.text(ZLayout.fmt(e.l)+' × '+ZLayout.fmt(e.b), lx+11.5, ty);
+        doc.text(ZLayout.fmt(e.l)+' × '+ZLayout.fmt(e.b), lx+22, ty);
         doc.setFont('helvetica','bold'); doc.setFontSize(7.2);
         doc.text(e.stk+'×', lx+listW, ty, {align:'right'});
       });
@@ -1311,9 +1354,9 @@ function baueDoc(){
         var sp = Math.floor(i/proSp), ze = i - sp*proSp;
         var tx = iX + sp*spW, ty = ly + ze*zeilenH;
         doc.setFont('helvetica','bold'); doc.setFontSize(7.4);
-        doc.text('Pos. '+e.pos, tx, ty);
+        doc.text(ZLayout.bereich(e), tx, ty);
         doc.setFont('helvetica','normal');
-        doc.text(ZLayout.fmt(e.l)+' × '+ZLayout.fmt(e.b)+' mm', tx+13, ty);
+        doc.text(ZLayout.fmt(e.l)+' × '+ZLayout.fmt(e.b)+' mm', tx+23, ty);
         doc.setFont('helvetica','bold');
         doc.text(e.stk+' Stk.', tx+spW-6, ty, {align:'right'});
       });
