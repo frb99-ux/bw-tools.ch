@@ -58,6 +58,27 @@
   .pl.on{border-color:var(--accent);background:var(--accent-soft)}
   .pl.on .vis i{border-color:var(--accent)}
 
+  /* Laufrichtung */
+  .lr{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+  .lro{position:relative;border:1px solid var(--line);border-radius:12px;background:var(--panel2);
+    padding:12px 13px;cursor:pointer;transition:.13s;display:block}
+  .lro:hover{border-color:#38424f;background:var(--panel-hover)}
+  .lro .t{display:block;font-size:14px;font-weight:600}
+  .lro .d{display:block;font-size:11px;color:var(--txt-dim);margin-top:2px;line-height:1.35}
+  .lro svg{display:block;width:74px;height:32px;margin-top:8px}
+  .lro svg rect{fill:none;stroke:#3a4552;stroke-width:1.2}
+  .lro svg .ar{fill:none;stroke:#6b7a8c;stroke-width:1.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .lro.on{border-color:var(--accent);background:var(--accent-soft)}
+  .lro.on svg rect{stroke:var(--accent)}
+  .lro.on svg .ar{stroke:var(--accent)}
+
+  /* zu grosse Teile */
+  .zg{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin:4px 0 16px}
+  .zgk{background:#fff;border-radius:10px;padding:10px}
+  .zgk svg{display:block;width:100%;height:auto}
+  .zgt{font-size:12px;color:#d3706e;margin-top:6px;font-weight:600}
+
   /* Tabelle */
   table.pos{width:100%;border-collapse:collapse}
   table.pos th{font-size:11px;font-weight:500;color:var(--txt-dim);text-align:left;
@@ -145,6 +166,35 @@
       <div><label class="fl" for="rand">Besäumung am Plattenrand</label>
         <input type="number" id="rand" value="10" min="0" step="1"></div>
     </div>
+
+    <label class="fl" style="margin-top:16px">Holzlaufrichtung</label>
+    <div class="lr" id="lr">
+      <label class="lro on" data-v="egal">
+        <span class="t">Spielt keine Rolle</span>
+        <span class="d">Teile dürfen gedreht werden – beste Ausbeute</span>
+        <svg viewBox="0 0 60 26"><rect x="1" y="1" width="58" height="24" rx="2"/>
+          <path d="M10 8 h14 M17 5 l4 3 -4 3" class="ar"/>
+          <path d="M40 18 v-9 M37 12 l3 -3 3 3" class="ar"/></svg>
+      </label>
+      <label class="lro" data-v="laengs">
+        <span class="t">Längs</span>
+        <span class="d">Teilelänge parallel zur Plattenlänge</span>
+        <svg viewBox="0 0 60 26"><rect x="1" y="1" width="58" height="24" rx="2"/>
+          <path d="M8 13 h44" class="ar"/><path d="M13 9 l-5 4 5 4" class="ar"/>
+          <path d="M47 9 l5 4 -5 4" class="ar"/></svg>
+      </label>
+      <label class="lro" data-v="quer">
+        <span class="t">Quer</span>
+        <span class="d">Teilelänge parallel zur Plattenbreite</span>
+        <svg viewBox="0 0 60 26"><rect x="1" y="1" width="58" height="24" rx="2"/>
+          <path d="M30 5 v16" class="ar"/><path d="M26 10 l4 -5 4 5" class="ar"/>
+          <path d="M26 16 l4 5 4 -5" class="ar"/></svg>
+      </label>
+    </div>
+    <div class="hint" style="margin-top:8px">
+      Ist eine Laufrichtung gesetzt, liegt die <b>Länge</b> jedes Teils zwingend in
+      Laufrichtung – die Teile werden dann nicht gedreht.
+    </div>
   </section>
 
   <section>
@@ -175,14 +225,19 @@
 
   <section id="ergebnis">
     <h2><span class="num">4</span>Zuschnittplan</h2>
+    <div id="fehler2" class="msg err"></div>
+    <div id="zugross" class="zg" style="display:none"></div>
     <div id="infobox" class="msg inf"></div>
     <div class="kpi" id="kpi"></div>
     <div id="plaene"></div>
     <div class="hint">
       Massangaben im Plan sind die Fertigmasse der Teile in Zuschnittlage (Länge × Breite).
       Zwischen allen Teilen und rundum am Plattenrand ist die eingestellte Fuge bzw. Besäumung
-      berücksichtigt. Alle Schnitte sind durchgehend (guillotinierbar) und damit auf der
-      Formatkreissäge ausführbar.
+      berücksichtigt, alle Schnitte sind durchgehend – auf der Vertikalsäge in einem Zug fahrbar.<br>
+      Gleich grosse Teile werden bewusst als Raster angeordnet (eine <b>Zuschnittgruppe</b> =
+      ein Anschlag), und der Verschnitt wird zu wenigen grossen <span style="color:#6fbf90">Reststücken</span>
+      zusammengezogen statt über die Platte verteilt – die sind grün eingezeichnet und beschriftet,
+      damit sie zurück ins Lager gehen können.
     </div>
   </section>
 
@@ -621,19 +676,28 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>/* pack.js */
 /* ===================================================================
-   bw-tools Zuschnitt - Guillotine-Packalgorithmus
+   bw-tools Zuschnitt - Packalgorithmus  (Version 2)
    -------------------------------------------------------------------
    Alle Masse in mm.
 
-   Randbesaeumung (RAND) rundum und Fuge (FUGE) zwischen den Teilen.
-   Trick: Container wird auf (L - 2*RAND + FUGE) x (B - 2*RAND + FUGE)
-   gesetzt und jedes Teil auf (l + FUGE) x (b + FUGE) aufgeblasen.
-   Dadurch liegt zwischen zwei Teilen immer genau FUGE und am Rand
-   immer mindestens RAND - ohne Sonderfaelle.
+   ZIELE (nach Vorgabe Schreinerei):
+   1) So wenige Platten wie moeglich.
+   2) Der Verschnitt soll als WENIGE GROSSE Reststuecke anfallen, nicht
+      als viele Schnipsel  -> ein Rest ab REST_MIN gilt als brauchbar
+      und wird maximiert.
+   3) Gleich grosse Teile sollen neben-/untereinander in Reihen liegen
+      (ein Saegeanschlag = viele Teile) -> Bloecke statt Streuung.
+   4) Holzlaufrichtung: 'laengs' | 'quer' | 'egal'. Ist sie gesetzt,
+      liegt die LAENGE jedes Teils zwingend in Laufrichtung; gedreht
+      wird dann nicht.
 
-   Schnittstruktur ist echt guillotinierbar: jede Platzierung teilt das
-   aufnehmende Freirechteck mit EINEM durchgehenden Schnitt in zwei
-   neue Freirechtecke.
+   Fuge/Besaeumung: Container wird auf (L-2*Rand+Fuge) x (B-2*Rand+Fuge)
+   aufgeblasen, jedes Teil auf (l+Fuge) x (b+Fuge). Dadurch liegt
+   zwischen zwei Teilen immer genau die Fuge und am Rand mindestens die
+   Besaeumung - ohne Sonderfaelle. Ein freies Rechteck (fw x fh) im
+   aufgeblasenen Raum ist real (fw-Fuge) x (fh-Fuge) gross.
+
+   Alle Schnitte sind durchgehend (guillotinierbar).
    =================================================================== */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -642,30 +706,114 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   'use strict';
 
   var EPS = 1e-9;
+  var REST_MIN = 250;        // ab dieser Kantenlaenge gilt ein Rest als brauchbar
 
-  /* ---------- Freirechteck-Verwaltung (Guillotine) ---------- */
+  function ceilDiv(a, b) { return Math.ceil(a / b - 1e-9); }
+
+  /* =================================================================
+     A) BLOCK-PACKER  -  gleiche Teile als Raster, Rest als ein Stueck
+     ================================================================= */
+
+  function bewerte(iw, ih, bw, bh, n, w, h, wahl) {
+    switch (wahl) {
+      case 'hoehe':     return bh * 1e6 + bw;            // volle Spalten zuerst
+      case 'breite':    return bw * 1e6 + bh;            // volle Zeilen zuerst
+      case 'teilgross': return (iw * ih) * 1e6 + bw * bh; // grosse Teile zuerst
+      case 'menge':     return n * 1e6 + bw * bh;         // grosse Serien zuerst
+      default:          return bw * bh;                   // 'flaeche'
+    }
+  }
+
+  function blockFill(gruppen, CW, CH, opt) {
+    var placed = [], frei = [], bloecke = 0, guard = 0;
+
+    function fuelle(x, y, w, h) {
+      if (guard++ > 5000 || w <= EPS || h <= EPS) return;
+
+      var best = null;
+      for (var gi = 0; gi < gruppen.length; gi++) {
+        var g = gruppen[gi];
+        if (!g.items.length) continue;
+        var lagen = [[g.iw, g.ih, false]];
+        if (g.drehbar && Math.abs(g.iw - g.ih) > EPS) lagen.push([g.ih, g.iw, true]);
+        for (var o = 0; o < lagen.length; o++) {
+          var iw = lagen[o][0], ih = lagen[o][1];
+          if (iw > w + EPS || ih > h + EPS) continue;
+          var maxC = Math.floor((w + EPS) / iw), maxR = Math.floor((h + EPS) / ih);
+          var ac = Math.min(maxC, g.items.length);
+          var ar = Math.min(maxR, ceilDiv(g.items.length, ac));
+          var n = Math.min(g.items.length, ac * ar);
+          ar = ceilDiv(n, ac);
+          var bw = ac * iw, bh = ar * ih;
+          var s = bewerte(iw, ih, bw, bh, n, w, h, opt.wahl);
+          if (!best || s > best.s + EPS) {
+            best = { g: g, iw: iw, ih: ih, ac: ac, ar: ar, n: n, bw: bw, bh: bh, rot: lagen[o][2], s: s };
+          }
+        }
+      }
+
+      if (!best) { frei.push({ x: x, y: y, w: w, h: h }); return; }
+
+      var take = best.g.items.splice(0, best.n);
+      var idx = 0;
+      for (var r = 0; r < best.ar; r++) {
+        for (var c = 0; c < best.ac && idx < take.length; c++, idx++) {
+          placed.push({
+            item: take[idx], rotated: best.rot,
+            x: x + c * best.iw, y: y + r * best.ih,
+            w: best.iw, h: best.ih
+          });
+        }
+      }
+      bloecke++;
+
+      // angebrochene letzte Reihe: die leeren Zellen sind ebenfalls frei
+      var voll = (best.ar - 1) * best.ac;
+      var inLetzter = take.length - voll;
+      if (best.ar > 0 && inLetzter < best.ac) {
+        frei.push({ x: x + inLetzter * best.iw, y: y + (best.ar - 1) * best.ih,
+                    w: (best.ac - inLetzter) * best.iw, h: best.ih });
+      }
+
+      var restOben = h - best.bh, restRechts = w - best.bw;
+      var oben = function () { if (restOben > EPS) fuelle(x, y + best.bh, best.bw, restOben); };
+      var rechtsVoll = function () { if (restRechts > EPS) fuelle(x + best.bw, y, restRechts, h); };
+      var rechts = function () { if (restRechts > EPS) fuelle(x + best.bw, y, restRechts, best.bh); };
+      var obenVoll = function () { if (restOben > EPS) fuelle(x, y + best.bh, w, restOben); };
+
+      switch (opt.modus) {
+        // Spalten: Schnitt laengs -> der grosse Rest bleibt rechts
+        case 'spalten':  oben(); rechtsVoll(); break;
+        // wie oben, aber zuerst die schmale Restspalte fuellen. Dadurch
+        // wandern Leisten in den Verschnitt statt in den grossen Streifen.
+        case 'spalten2': rechtsVoll(); oben(); break;
+        // Zeilen: Schnitt quer -> der grosse Rest bleibt oben
+        case 'zeilen':   rechts(); obenVoll(); break;
+        default:         obenVoll(); rechts(); break;   // 'zeilen2'
+      }
+    }
+
+    fuelle(0, 0, CW, CH);
+    mergeFree(frei);
+    return { placed: placed, frei: frei, bloecke: bloecke };
+  }
+
+  /* =================================================================
+     B) FREI-NESTING (Guillotine, Version 1) - nur noch als Rueckfall,
+        falls es damit mit weniger Platten geht
+     ================================================================= */
 
   function splitFree(free, w, h, rule) {
-    // free: {x,y,w,h}; Teil (w x h) liegt links unten in free.
-    // Zwei Varianten des durchgehenden Schnitts:
-    //   horizontal: unten voller Streifen der Hoehe h, oben Rest
-    //   vertikal:   links voller Streifen der Breite w, rechts Rest
-    var restW = free.w - w, restH = free.h - h;
-    var horizontal;
-    if (rule === 'SAS')       horizontal = (restW < restH);            // shorter axis split
-    else if (rule === 'LAS')  horizontal = (restW >= restH);           // longer axis split
-    else if (rule === 'SLAS') horizontal = (free.w < free.h);          // shorter leftover axis
-    else if (rule === 'LLAS') horizontal = (free.w >= free.h);
-    else if (rule === 'MAXAS') horizontal = (restW * free.h >= free.w * restH);
-    else                       horizontal = (restW * free.h < free.w * restH); // MINAS
-
+    var restW = free.w - w, restH = free.h - h, horizontal;
+    if (rule === 'SAS') horizontal = (restW < restH);
+    else if (rule === 'LAS') horizontal = (restW >= restH);
+    else if (rule === 'MINAS') horizontal = (restW * free.h < free.w * restH);
+    else horizontal = (restW * free.h >= free.w * restH);
     var out = [];
     if (horizontal) {
-      // Schnitt auf Hoehe h quer durch free
       if (restW > EPS) out.push({ x: free.x + w, y: free.y, w: restW, h: h });
       if (restH > EPS) out.push({ x: free.x, y: free.y + h, w: free.w, h: restH });
     } else {
-      // Schnitt auf Breite w laengs durch free
       if (restW > EPS) out.push({ x: free.x + w, y: free.y, w: restW, h: free.h });
       if (restH > EPS) out.push({ x: free.x, y: free.y + h, w: w, h: restH });
     }
@@ -673,8 +821,6 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   }
 
   function mergeFree(list) {
-    // Rectangle-Merge-Improvement: benachbarte Freirechtecke mit
-    // gleicher Kante wieder zusammenfassen (bleibt guillotinierbar).
     for (var i = 0; i < list.length; i++) {
       for (var j = i + 1; j < list.length; j++) {
         var a = list[i], b = list[j];
@@ -691,174 +837,245 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return list;
   }
 
-  /* ---------- eine Platte fuellen ---------- */
-
-  function fillBoard(items, boardW, boardH, opt) {
-    // items: [{id,pos,w,h,rot}] (bereits aufgeblasen), wird NICHT veraendert
-    // gibt {placed:[{item,x,y,w,h,rotated}], rest:[items]}
-    var free = [{ x: 0, y: 0, w: boardW, h: boardH }];
-    var placed = [];
-    var rest = [];
-    var pool = items.slice();
-
+  function freiFill(items, CW, CH, opt) {
+    var free = [{ x: 0, y: 0, w: CW, h: CH }], placed = [], pool = items.slice();
     while (pool.length) {
       var best = null;
       for (var k = 0; k < pool.length; k++) {
         var it = pool[k];
         for (var f = 0; f < free.length; f++) {
           var fr = free[f];
-          var orients = [[it.w, it.h, false]];
-          if (opt.rotate && Math.abs(it.w - it.h) > EPS) orients.push([it.h, it.w, true]);
-          for (var o = 0; o < orients.length; o++) {
-            var w = orients[o][0], h = orients[o][1];
+          var lagen = [[it.iw, it.ih, false]];
+          if (it.drehbar && Math.abs(it.iw - it.ih) > EPS) lagen.push([it.ih, it.iw, true]);
+          for (var o = 0; o < lagen.length; o++) {
+            var w = lagen[o][0], h = lagen[o][1];
             if (w > fr.w + EPS || h > fr.h + EPS) continue;
             var restW = fr.w - w, restH = fr.h - h;
-            var kurz = Math.min(restW, restH), lang = Math.max(restW, restH);
-            var flaeche = fr.w * fr.h - w * h;
-            var score1, score2;
-            if (opt.fit === 'BAF_S')      { score1 = flaeche; score2 = kurz; }
-            else if (opt.fit === 'BAF_L') { score1 = flaeche; score2 = lang; }
-            else if (opt.fit === 'BSSF')  { score1 = kurz;    score2 = lang; }
-            else if (opt.fit === 'BLSF')  { score1 = lang;    score2 = kurz; }
-            else                          { score1 = flaeche; score2 = kurz; }
-            if (!best || score1 < best.score1 - EPS ||
-               (Math.abs(score1 - best.score1) < EPS && score2 < best.score2 - EPS)) {
-              best = { k: k, f: f, w: w, h: h, rotated: orients[o][2], score1: score1, score2: score2 };
+            var s1 = fr.w * fr.h - w * h, s2 = Math.max(restW, restH);
+            if (!best || s1 < best.s1 - EPS ||
+               (Math.abs(s1 - best.s1) < EPS && s2 < best.s2 - EPS)) {
+              best = { k: k, f: f, w: w, h: h, rotated: lagen[o][2], s1: s1, s2: s2 };
             }
           }
         }
       }
-      if (!best) { rest = pool.slice(); break; }
-
+      if (!best) break;
       var fr2 = free[best.f];
-      var item = pool[best.k];
-      placed.push({ item: item, x: fr2.x, y: fr2.y, w: best.w, h: best.h, rotated: best.rotated });
-      var newFree = splitFree(fr2, best.w, best.h, opt.split);
+      placed.push({ item: pool[best.k], x: fr2.x, y: fr2.y, w: best.w, h: best.h, rotated: best.rotated });
+      var nf = splitFree(fr2, best.w, best.h, opt.split);
       free.splice(best.f, 1);
-      for (var n = 0; n < newFree.length; n++) free.push(newFree[n]);
+      for (var n = 0; n < nf.length; n++) free.push(nf[n]);
       mergeFree(free);
       pool.splice(best.k, 1);
     }
-    return { placed: placed, rest: rest, free: free };
+    return { placed: placed, rest: pool, frei: free, bloecke: placed.length };
   }
 
-  /* ---------- Sortier-Strategien ---------- */
+  /* =================================================================
+     Bewertung einer Gesamtloesung
+     ================================================================= */
 
-  var SORTS = {
-    AREA:  function (a, b) { return (b.w * b.h) - (a.w * a.h); },
-    MAXS:  function (a, b) { return Math.max(b.w, b.h) - Math.max(a.w, a.h); },
-    MINS:  function (a, b) { return Math.min(b.w, b.h) - Math.min(a.w, a.h); },
-    W:     function (a, b) { return b.w - a.w; },
-    H:     function (a, b) { return b.h - a.h; },
-    PERI:  function (a, b) { return (b.w + b.h) - (a.w + a.h); }
-  };
-  var SPLITS = ['SAS', 'LAS', 'SLAS', 'LLAS', 'MINAS', 'MAXAS'];
-  var FITS = ['BAF_L', 'BAF_S', 'BSSF', 'BLSF'];
+  function bewerteLoesung(boards, platte, FUGE, RAND) {
+    var restNutzbar = 0, restGroesstes = 0, bloecke = 0, genutzt = 0;
+    for (var b = 0; b < boards.length; b++) {
+      bloecke += boards[b].bloecke;
+      for (var p = 0; p < boards[b].placed.length; p++) {
+        var q = boards[b].placed[p];
+        genutzt += (q.w - FUGE) * (q.h - FUGE);
+      }
+      for (var f = 0; f < boards[b].frei.length; f++) {
+        var fr = boards[b].frei[f];
+        var rl = fr.w - FUGE, rb = fr.h - FUGE;
+        if (rl >= REST_MIN && rb >= REST_MIN) {
+          restNutzbar += rl * rb;
+          if (rl * rb > restGroesstes) restGroesstes = rl * rb;
+        }
+      }
+    }
+    return {
+      anzahl: boards.length, bloecke: bloecke, genutzt: genutzt,
+      restNutzbar: restNutzbar, restGroesstes: restGroesstes,
+      quote: genutzt / (boards.length * platte.l * platte.b)
+    };
+  }
 
-  /* ---------- Hauptfunktion ---------- */
+  /* Reihenfolge der Ziele:
+     1. moeglichst wenige Platten
+     2. Bloecke (= gleiche Teile in Reihen, wenige durchgehende Schnitte)
+        schlagen freies Nesting - ausser das freie Nesting laesst einen
+        deutlich groesseren brauchbaren Rest uebrig (Schwelle: 5 % einer
+        Plattenflaeche)
+     3. groesserer brauchbarer Rest
+     4. weniger Bloecke
+     5. hoehere Ausnutzung                                            */
+  function besser(a, b, plattenFlaeche) {
+    if (!b) return true;
+    if (a.anzahl !== b.anzahl) return a.anzahl < b.anzahl;
+    var schwelle = 0.05 * plattenFlaeche;
+    if (a.familie !== b.familie) {
+      var block = (a.familie === 'block') ? a : b;
+      var frei  = (a.familie === 'block') ? b : a;
+      var freiKlarBesser = (frei.restNutzbar - block.restNutzbar) > schwelle;
+      return freiKlarBesser ? (a === frei) : (a === block);
+    }
+    if (Math.abs(a.restNutzbar - b.restNutzbar) > 1) return a.restNutzbar > b.restNutzbar;
+    if (a.bloecke !== b.bloecke) return a.bloecke < b.bloecke;
+    return a.genutzt > b.genutzt;
+  }
+
+  /* =================================================================
+     Hauptfunktion
+     ================================================================= */
+
+  var WAHLEN = ['flaeche', 'hoehe', 'breite', 'teilgross', 'menge'];
+  var MODI = ['spalten', 'spalten2', 'zeilen', 'zeilen2'];
+  var SPLITS = ['SAS', 'LAS', 'MINAS', 'MAXAS'];
 
   /**
-   * @param positionen [{pos, stk, l, b}]  (Rohmasse in mm)
-   * @param platte     {l, b}              (Rohmass der Platte in mm)
-   * @param optionen   {rand, fuge, rotate}
-   * @returns {ok, platten:[{teile:[{pos,l,b,x,y,gedreht}], flaeche, genutzt, verschnitt}],
-   *           zuGross:[], kennzahlen:{...}}
+   * @param positionen [{pos, stk, l, b}]   Rohmasse in mm
+   * @param platte     {l, b}
+   * @param optionen   {rand, fuge, laufrichtung: 'egal'|'laengs'|'quer'}
    */
   function berechne(positionen, platte, optionen) {
     var o = optionen || {};
     var RAND = (o.rand === undefined) ? 10 : o.rand;
     var FUGE = (o.fuge === undefined) ? 10 : o.fuge;
-    var rotate = (o.rotate === undefined) ? true : !!o.rotate;
+    var LR = o.laufrichtung || 'egal';
+    var drehbar = (LR === 'egal');
 
-    // Container aufblasen um genau eine Fuge (letzte Reihe braucht keine)
-    var BW = platte.l - 2 * RAND + FUGE;
-    var BH = platte.b - 2 * RAND + FUGE;
+    var CW = platte.l - 2 * RAND + FUGE;
+    var CH = platte.b - 2 * RAND + FUGE;
 
+    /* Teile aufbauen. Bei fixer Laufrichtung liegt die LAENGE des Teils
+       in Laufrichtung: 'laengs' = entlang der Plattenlaenge (x),
+       'quer' = entlang der Plattenbreite (y) -> Teil um 90 Grad gekippt. */
     var alle = [], zuGross = [], uid = 0;
     for (var i = 0; i < positionen.length; i++) {
       var p = positionen[i];
       var stk = Math.max(0, Math.round(p.stk || 0));
-      var iw = p.l + FUGE, ih = p.b + FUGE;
-      var passt = (iw <= BW + EPS && ih <= BH + EPS) ||
-                  (rotate && ih <= BW + EPS && iw <= BH + EPS);
+      var pw, ph;
+      if (LR === 'quer') { pw = p.b; ph = p.l; } else { pw = p.l; ph = p.b; }
+      var iw = pw + FUGE, ih = ph + FUGE;
+      var passt = (iw <= CW + EPS && ih <= CH + EPS) ||
+                  (drehbar && ih <= CW + EPS && iw <= CH + EPS);
       for (var s = 0; s < stk; s++) {
-        var it = { id: uid++, pos: p.pos, ql: p.l, qb: p.b, w: iw, h: ih };
+        var it = { id: uid++, pos: p.pos, ql: p.l, qb: p.b, iw: iw, ih: ih, drehbar: drehbar };
         if (passt) alle.push(it); else zuGross.push(it);
       }
     }
 
     if (!alle.length) {
-      return { ok: zuGross.length === 0, platten: [], zuGross: zuGross,
-               kennzahlen: { anzahlPlatten: 0, teile: 0, verschnitt: 0, nutzflaeche: 0 } };
+      return { ok: zuGross.length === 0, platten: [], zuGross: zuGross, laufrichtung: LR,
+               kennzahlen: { anzahlPlatten: 0, teile: 0, verschnitt: 0, bloecke: 0,
+                             restNutzbar: 0, restGroesstes: 0 } };
     }
 
-    // Mehrere Strategien durchrechnen, beste nehmen.
-    // Bei sehr vielen Teilen wird das Strategiefeld gekuerzt, damit die
-    // Berechnung im Browser fluessig bleibt.
-    var bestLoesung = null;
-    var sortNames = Object.keys(SORTS);
-    var splitSet = SPLITS, fitSet = FITS;
-    if (alle.length > 400)      { sortNames = ['AREA', 'MAXS']; splitSet = ['SAS', 'MINAS']; fitSet = ['BAF_L', 'BSSF']; }
-    else if (alle.length > 150) { sortNames = ['AREA', 'MAXS', 'PERI']; splitSet = ['SAS', 'LAS', 'MINAS']; fitSet = ['BAF_L', 'BAF_S', 'BSSF']; }
+    function gruppen() {                        // frische Gruppen je Durchlauf
+      var map = {}, list = [];
+      for (var k = 0; k < alle.length; k++) {
+        var it = alle[k], key = it.iw + '|' + it.ih;
+        if (!map[key]) { map[key] = { iw: it.iw, ih: it.ih, drehbar: it.drehbar, items: [] }; list.push(map[key]); }
+        map[key].items.push(it);
+      }
+      list.sort(function (a, c) { return (c.iw * c.ih * c.items.length) - (a.iw * a.ih * a.items.length); });
+      return list;
+    }
 
-    for (var sn = 0; sn < sortNames.length; sn++) {
-      for (var sp = 0; sp < splitSet.length; sp++) {
-        for (var ft = 0; ft < fitSet.length; ft++) {
-          var pool = alle.slice().sort(SORTS[sortNames[sn]]);
-          var boards = [], guard = 0;
-          while (pool.length && guard++ < 500) {
-            var r = fillBoard(pool, BW, BH, { rotate: rotate, split: splitSet[sp], fit: fitSet[ft] });
-            if (!r.placed.length) break;           // nichts platzierbar -> Abbruch
-            boards.push(r);
-            pool = r.rest;
+    var bestKand = null;
+
+    /* --- Familie A: Bloecke ---
+       Zusaetzlich wird versucht, von vornherein einen Streifen der Platte
+       freizuhalten. Geht das ohne zusaetzliche Platte auf, entsteht ein
+       grosses, zusammenhaengendes Reststueck statt vieler Schnipsel. */
+    var RESERVEN = [
+      { f: 1,    achse: null },
+      { f: 0.85, achse: 'h' }, { f: 0.75, achse: 'h' }, { f: 0.65, achse: 'h' }, { f: 0.55, achse: 'h' },
+      { f: 0.85, achse: 'b' }, { f: 0.75, achse: 'b' }, { f: 0.65, achse: 'b' }, { f: 0.55, achse: 'b' }
+    ];
+    for (var m = 0; m < MODI.length; m++) {
+      for (var wI = 0; wI < WAHLEN.length; wI++) {
+        for (var rv = 0; rv < RESERVEN.length; rv++) {
+          var res0 = RESERVEN[rv];
+          var uW = res0.achse === 'b' ? Math.floor(CW * res0.f) : CW;
+          var uH = res0.achse === 'h' ? Math.floor(CH * res0.f) : CH;
+          if (uW < 1 || uH < 1) continue;
+
+          var gr = gruppen(), boards = [], schutz = 0, leer = false;
+          var offen = function () { var n = 0; for (var q = 0; q < gr.length; q++) n += gr[q].items.length; return n; };
+          while (offen() && schutz++ < 400) {
+            var res = blockFill(gr, uW, uH, { modus: MODI[m], wahl: WAHLEN[wI] });
+            if (!res.placed.length) { leer = true; break; }
+            if (res0.achse === 'h') res.frei.push({ x: 0, y: uH, w: CW, h: CH - uH });
+            if (res0.achse === 'b') res.frei.push({ x: uW, y: 0, w: CW - uW, h: CH });
+            boards.push(res);
           }
-          if (pool.length) continue;               // Strategie hat es nicht geschafft
-          var genutzt = 0;
-          for (var bi = 0; bi < boards.length; bi++)
-            for (var pi = 0; pi < boards[bi].placed.length; pi++) {
-              var pl = boards[bi].placed[pi];
-              genutzt += pl.item.ql * pl.item.qb;
-            }
-          var totalFlaeche = boards.length * platte.l * platte.b;
-          var cand = { boards: boards, anzahl: boards.length, genutzt: genutzt,
-                       quote: genutzt / totalFlaeche,
-                       strategie: sortNames[sn] + '/' + splitSet[sp] + '/' + fitSet[ft] };
-          if (!bestLoesung || cand.anzahl < bestLoesung.anzahl ||
-             (cand.anzahl === bestLoesung.anzahl && cand.quote > bestLoesung.quote)) {
-            bestLoesung = cand;
-          }
+          if (leer || offen()) continue;
+
+          var k = bewerteLoesung(boards, platte, FUGE, RAND);
+          k.boards = boards; k.familie = 'block';
+          k.strategie = 'Block/' + MODI[m] + '/' + WAHLEN[wI] +
+                        (res0.achse ? '/Reserve-' + res0.achse + Math.round(100 - res0.f * 100) : '');
+          if (besser(k, bestKand, platte.l * platte.b)) bestKand = k;
         }
       }
     }
 
-    if (!bestLoesung) {
-      return { ok: false, platten: [], zuGross: zuGross,
-               kennzahlen: { anzahlPlatten: 0, teile: 0, verschnitt: 0, nutzflaeche: 0 } };
+    /* --- Familie B: freies Nesting (nur relevant, wenn es Platten spart) --- */
+    var SORTS = [
+      function (a, c) { return (c.iw * c.ih) - (a.iw * a.ih); },
+      function (a, c) { return Math.max(c.iw, c.ih) - Math.max(a.iw, a.ih); },
+      function (a, c) { return c.iw - a.iw; },
+      function (a, c) { return c.ih - a.ih; }
+    ];
+    for (var si = 0; si < SORTS.length; si++) {
+      for (var sp = 0; sp < SPLITS.length; sp++) {
+        var pool = alle.slice().sort(SORTS[si]), bds = [], g2 = 0;
+        while (pool.length && g2++ < 400) {
+          var r2 = freiFill(pool, CW, CH, { split: SPLITS[sp] });
+          if (!r2.placed.length) break;
+          bds.push(r2); pool = r2.rest;
+        }
+        if (pool.length) continue;
+        var k2 = bewerteLoesung(bds, platte, FUGE, RAND);
+        k2.bloecke = 0; for (var bb = 0; bb < bds.length; bb++) k2.bloecke += bds[bb].placed.length;
+        k2.boards = bds; k2.familie = 'frei'; k2.strategie = 'Frei/' + SPLITS[sp];
+        if (besser(k2, bestKand, platte.l * platte.b)) bestKand = k2;
+      }
     }
 
-    // Ergebnis in echte Plattenkoordinaten zuruecksetzen
+    if (!bestKand) {
+      return { ok: false, platten: [], zuGross: zuGross, laufrichtung: LR,
+               kennzahlen: { anzahlPlatten: 0, teile: 0, verschnitt: 0, bloecke: 0,
+                             restNutzbar: 0, restGroesstes: 0 } };
+    }
+
+    /* --- Ergebnis in echte Plattenkoordinaten --- */
     var platten = [];
-    for (var b = 0; b < bestLoesung.boards.length; b++) {
-      var teile = [], flaecheTeile = 0;
-      var pls = bestLoesung.boards[b].placed;
-      for (var t = 0; t < pls.length; t++) {
-        var q = pls[t];
-        var realW = q.w - FUGE, realH = q.h - FUGE;
-        teile.push({
-          pos: q.item.pos,
-          l: realW, b: realH,
-          x: RAND + q.x, y: RAND + q.y,
-          gedreht: q.rotated
-        });
-        flaecheTeile += realW * realH;
+    for (var b2 = 0; b2 < bestKand.boards.length; b2++) {
+      var brd = bestKand.boards[b2], teile = [], flaeche = 0;
+      for (var t = 0; t < brd.placed.length; t++) {
+        var q2 = brd.placed[t];
+        var rw = q2.w - FUGE, rh = q2.h - FUGE;
+        teile.push({ pos: q2.item.pos, l: rw, b: rh, x: RAND + q2.x, y: RAND + q2.y, gedreht: !!q2.rotated });
+        flaeche += rw * rh;
       }
       teile.sort(function (a, c) { return (a.y - c.y) || (a.x - c.x); });
+
+      var reste = [];
+      for (var f2 = 0; f2 < brd.frei.length; f2++) {
+        var fr3 = brd.frei[f2];
+        var rl2 = fr3.w - FUGE, rb2 = fr3.h - FUGE;
+        if (rl2 >= REST_MIN && rb2 >= REST_MIN) {
+          reste.push({ l: rl2, b: rb2, x: RAND + fr3.x, y: RAND + fr3.y });
+        }
+      }
+      reste.sort(function (a, c) { return (c.l * c.b) - (a.l * a.b); });
+
       platten.push({
-        nr: b + 1,
-        teile: teile,
-        flaechePlatte: platte.l * platte.b,
-        flaecheTeile: flaecheTeile,
-        verschnitt: 1 - flaecheTeile / (platte.l * platte.b)
+        nr: b2 + 1, teile: teile, reste: reste,
+        bloecke: brd.bloecke,
+        flaechePlatte: platte.l * platte.b, flaecheTeile: flaeche,
+        verschnitt: 1 - flaeche / (platte.l * platte.b)
       });
     }
 
@@ -867,20 +1084,20 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     return {
       ok: zuGross.length === 0,
-      platten: platten,
-      zuGross: zuGross,
-      strategie: bestLoesung.strategie,
+      platten: platten, zuGross: zuGross, laufrichtung: LR,
+      strategie: bestKand.strategie,
       kennzahlen: {
-        anzahlPlatten: platten.length,
-        teile: totT,
-        nutzflaeche: totF,
+        anzahlPlatten: platten.length, teile: totT, nutzflaeche: totF,
         gesamtflaeche: platten.length * platte.l * platte.b,
-        verschnitt: 1 - totF / (platten.length * platte.l * platte.b)
+        verschnitt: 1 - totF / (platten.length * platte.l * platte.b),
+        bloecke: bestKand.bloecke,
+        restNutzbar: bestKand.restNutzbar,
+        restGroesstes: bestKand.restGroesstes
       }
     };
   }
 
-  return { berechne: berechne, RAND_STD: 10, FUGE_STD: 10 };
+  return { berechne: berechne, RAND_STD: 10, FUGE_STD: 10, REST_MIN: REST_MIN };
 });
 
 </script>
@@ -909,15 +1126,41 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
    * @param box        {x,y,w,h} verfuegbarer Bereich auf dem Papier (mm)
    * @returns {prims:[...], rahmen:{x,y,w,h}, skala}
    */
-  function plan(platteMass, teile, box) {
-    var skala = Math.min(box.w / platteMass.l, box.h / platteMass.b);
+  function plan(platteMass, teile, box, opt) {
+    opt = opt || {};
+    var reste = opt.reste || [];
+    var lr = opt.laufrichtung || 'egal';
+    var pfeilPlatz = (lr === 'egal') ? 0 : 7;
+
+    // Platz fuer den Laufrichtungspfeil abziehen: laengs unten, quer links
+    var bx = box.x + (lr === 'quer' ? pfeilPlatz : 0);
+    var bw2 = box.w - (lr === 'quer' ? pfeilPlatz : 0);
+    var bh2 = box.h - (lr === 'laengs' ? pfeilPlatz : 0);
+
+    var skala = Math.min(bw2 / platteMass.l, bh2 / platteMass.b);
     var pw = platteMass.l * skala, ph = platteMass.b * skala;
-    var ox = box.x + (box.w - pw) / 2;
-    var oy = box.y + (box.h - ph) / 2;     // oy = OBERKANTE der Platte auf Papier
+    var ox = bx + (bw2 - pw) / 2;
+    var oy = box.y + (bh2 - ph) / 2;       // oy = OBERKANTE der Platte auf Papier
 
     var prims = [];
     // Plattenumriss
     prims.push({ t: 'rect', x: ox, y: oy, w: pw, h: ph, stroke: 0.5, grau: 1, fill: null });
+
+    // brauchbare Reststuecke zuerst (liegen hinter den Teilen)
+    for (var ri = 0; ri < reste.length; ri++) {
+      var rs = reste[ri];
+      var qx = ox + rs.x * skala;
+      var qy = oy + (platteMass.b - rs.y - rs.b) * skala;
+      var qw = rs.l * skala, qh = rs.b * skala;
+      prims.push({ t: 'rect', x: qx, y: qy, w: qw, h: qh, stroke: 0.35,
+                   fill: [242, 246, 235], gestrichelt: 1, gruen: 1 });
+      var rt = 'REST ' + fmt(rs.l) + ' × ' + fmt(rs.b);
+      var rg = Math.min(qh * 0.30, 3.0, (qw * 0.88) / (rt.length * 0.55));
+      if (rg >= 1.1) {
+        prims.push({ t: 'text', x: qx + qw / 2, y: qy + qh / 2 + rg * 0.36,
+                     s: rt, g: rg, fett: 0, mitte: 1, gruen: 1 });
+      }
+    }
 
     for (var i = 0; i < teile.length; i++) {
       var s = teile[i];
@@ -943,7 +1186,59 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         }
       }
     }
+    // Laufrichtungspfeil
+    if (lr === 'laengs') {
+      var ly = oy + ph + pfeilPlatz * 0.62, lx1 = ox + pw * 0.30, lx2 = ox + pw * 0.70;
+      prims.push({ t: 'pfeil', x1: lx1, y1: ly, x2: lx2, y2: ly });
+      prims.push({ t: 'text', x: (lx1 + lx2) / 2, y: ly - 1.4, s: 'LAUFRICHTUNG',
+                   g: 2.1, fett: 1, mitte: 1, grau: 110 });
+    } else if (lr === 'quer') {
+      var vx = ox - pfeilPlatz * 0.55, vy1 = oy + ph * 0.30, vy2 = oy + ph * 0.70;
+      prims.push({ t: 'pfeil', x1: vx, y1: vy1, x2: vx, y2: vy2 });
+      prims.push({ t: 'text', x: vx - 1.6, y: (vy1 + vy2) / 2, s: 'LAUFRICHTUNG',
+                   g: 2.1, fett: 1, mitte: 1, grau: 110, dreh: 90 });
+    }
+
     return { prims: prims, rahmen: { x: ox, y: oy, w: pw, h: ph }, skala: skala };
+  }
+
+  /* Darstellung "Teil passt nicht auf die Platte": Platte grau, Teil rot
+     darueber, beide im gleichen Massstab, an der unteren linken Ecke
+     ausgerichtet - so sieht man den Ueberstand sofort.
+     Liefert zusaetzlich die Zeichenflaeche und den Ueberstand in mm. */
+  function passtNicht(platteMass, teil, breiteMm) {
+    // guenstigere Lage waehlen: die mit dem kleineren Ueberstand
+    var lagen = [[teil.l, teil.b], [teil.b, teil.l]];
+    var best = null;
+    for (var i = 0; i < lagen.length; i++) {
+      var ul = Math.max(0, lagen[i][0] - platteMass.l);
+      var ub = Math.max(0, lagen[i][1] - platteMass.b);
+      var s = ul + ub;
+      if (!best || s < best.s) best = { l: lagen[i][0], b: lagen[i][1], ul: ul, ub: ub, s: s };
+    }
+
+    var TOP = 5.2, BOT = 4.6;                   // Platz fuer die Beschriftungen
+    var maxL = Math.max(platteMass.l, best.l);
+    var maxB = Math.max(platteMass.b, best.b);
+    var skala = breiteMm / maxL;
+    var hoehe = maxB * skala + TOP + BOT;
+
+    var basis = TOP + maxB * skala;             // Unterkante beider Rechtecke
+    var pw = platteMass.l * skala, ph = platteMass.b * skala;
+    var tw = best.l * skala, th = best.b * skala;
+
+    var prims = [
+      { t: 'rect', x: 0, y: basis - ph, w: pw, h: ph, stroke: 0.4, grau: 1, fill: [233, 236, 240] },
+      { t: 'text', x: pw / 2, y: basis + 3.4, s: 'Platte ' + fmt(platteMass.l) + ' × ' + fmt(platteMass.b),
+        g: 2.9, fett: 0, mitte: 1, grau: 120 },
+      { t: 'rect', x: 0, y: basis - th, w: tw, h: th, stroke: 0.7, fill: null, rot: 1, gestrichelt: 1 },
+      { t: 'text', x: tw / 2, y: TOP - 1.6, s: fmt(teil.l) + ' × ' + fmt(teil.b) + ' mm',
+        g: 3.4, fett: 1, mitte: 1, rot: 1 }
+    ];
+    var ueber = [];
+    if (best.ul > 0) ueber.push(fmt(best.ul) + ' mm zu lang');
+    if (best.ub > 0) ueber.push(fmt(best.ub) + ' mm zu breit');
+    return { prims: prims, breite: Math.max(pw, tw), hoehe: hoehe, ueberstand: ueber.join(', ') };
   }
 
   function fmt(v) {
@@ -1009,8 +1304,15 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return platten;
   }
 
-  return { plan: plan, liste: liste, bereich: bereich, nummeriere: nummeriere,
-           fmt: fmt, mm2pt: mm2pt, PT: PT, textBreite: textBreite };
+  var LR_TEXT = {
+    egal:   'Laufrichtung spielt keine Rolle',
+    laengs: 'Laufrichtung längs (parallel zur Plattenlänge)',
+    quer:   'Laufrichtung quer (parallel zur Plattenbreite)'
+  };
+
+  return { plan: plan, passtNicht: passtNicht, liste: liste, bereich: bereich,
+           nummeriere: nummeriere, fmt: fmt, mm2pt: mm2pt, PT: PT,
+           textBreite: textBreite, LR_TEXT: LR_TEXT };
 });
 
 </script>
@@ -1055,6 +1357,10 @@ function baueplatten(){
 function gewaehltePlatte(){
   var el = document.querySelector('.pl.on');
   return PLATTEN[el ? +el.dataset.i : 1];
+}
+function gewaehlteLaufrichtung(){
+  var el = document.querySelector('.lro.on');
+  return el ? el.dataset.v : 'egal';
 }
 
 /* ---------------- Positionstabelle ---------------- */
@@ -1108,10 +1414,27 @@ function leseZeilen(){
 }
 
 /* ---------------- Berechnung ---------------- */
-function zeigeFehler(t){
-  var e=$('fehler'); if(!t){ e.classList.remove('on'); e.innerHTML=''; return; }
-  e.innerHTML=t; e.classList.add('on');
-  window.scrollTo({top:0,behavior:'smooth'});
+function zeigeFehler(t, scroll){
+  ['fehler','fehler2'].forEach(function(id){
+    var e=$(id); if(!e) return;
+    if(!t){ e.classList.remove('on'); e.innerHTML=''; }
+    else { e.innerHTML=t; e.classList.add('on'); }
+  });
+  if(t && scroll!==false) window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* Bild "Teil passt nicht auf die Platte" */
+function zeigeZuGross(liste, platte){
+  var box=$('zugross');
+  if(!liste.length){ box.style.display='none'; box.innerHTML=''; return; }
+  box.innerHTML = liste.map(function(t){
+    var W=150;
+    var lay=ZLayout.passtNicht(platte, t, W);
+    return '<div class="zgk">'+prims2svg(lay.prims, lay.breite, lay.hoehe)+
+      '<div class="zgt">Pos. '+esc(t.pos)+' passt nicht'+
+      (lay.ueberstand? ' – '+esc(lay.ueberstand) : '')+'</div></div>';
+  }).join('');
+  box.style.display='';
 }
 
 function rechnen(){
@@ -1140,27 +1463,48 @@ function rechnen(){
   });
   reihen.sort(function(a,c){ return parseFloat(c)-parseFloat(a); });
 
+  var lr = gewaehlteLaufrichtung();
   var saetze=[], zuGross=[];
   reihen.forEach(function(k){
     var g=gruppen[k];
-    var r=ZPack.berechne(g.pos, platte, {rand:rand, fuge:fuge, rotate:true});
+    var r=ZPack.berechne(g.pos, platte, {rand:rand, fuge:fuge, laufrichtung:lr});
     r.zuGross.forEach(function(t){ zuGross.push({pos:t.pos, l:t.ql, b:t.qb, d:g.dicke}); });
     if(r.platten.length) saetze.push({dicke:g.dicke, res:r});
   });
 
-  if(zuGross.length){
-    var seen={}, txt=[];
-    zuGross.forEach(function(t){
-      var k=t.pos+'|'+t.l+'|'+t.b; if(seen[k])return; seen[k]=1;
-      txt.push('Pos. '+t.pos+' ('+t.l+' × '+t.b+' mm)');
-    });
-    zeigeFehler('<b>Passt nicht auf die gewählte Platte '+platte.l+' × '+platte.b+' mm:</b><br>'+
-      txt.join('<br>')+'<br><span style="opacity:.8">Grösseres Plattenformat wählen oder Besäumung reduzieren.</span>');
+  // zu grosse Teile: einmal je Mass, mit Bild
+  var seen={}, einzel=[];
+  zuGross.forEach(function(t){
+    var k2=t.pos+'|'+t.l+'|'+t.b; if(seen[k2]){ seen[k2].stk++; return; }
+    seen[k2]={stk:1}; einzel.push(t);
+  });
+
+  if(einzel.length){
+    var warum = (lr==='egal') ? '' :
+      ' Bei Laufrichtung <b>'+(lr==='laengs'?'längs':'quer')+'</b> darf nicht gedreht werden – ' +
+      'mit „Spielt keine Rolle“ würde ein Teil ggf. quer noch passen.';
+    zeigeFehler('<b>Diese Teile passen nicht auf die Platte '+platte.l+' × '+platte.b+' mm '+
+      'und wurden nicht eingeplant:</b><br>'+
+      einzel.map(function(t){
+        return 'Pos. '+esc(t.pos)+' – '+ZLayout.fmt(t.l)+' × '+ZLayout.fmt(t.b)+' mm ('+
+               seen[t.pos+'|'+t.l+'|'+t.b].stk+' Stk.)'; }).join('<br>')+
+      '<br><span style="opacity:.85">Grösseres Plattenformat wählen, Mass korrigieren oder ' +
+      'Besäumung reduzieren.'+warum+'</span>');
+  } else {
+    zeigeFehler('');
   }
-  if(!saetze.length){ ERG=null; $('ergebnis').style.display='none'; $('btnPdf').disabled=true; return; }
+  zeigeZuGross(einzel, platte);
+
+  if(!saetze.length){
+    ERG=null; $('btnPdf').disabled=true;
+    $('kpi').innerHTML=''; $('plaene').innerHTML=''; $('infobox').className='msg inf';
+    $('ergebnis').style.display = einzel.length ? 'block' : 'none';
+    return;
+  }
 
   ERG = {
-    platte:platte, fuge:fuge, rand:rand, saetze:saetze,
+    platte:platte, fuge:fuge, rand:rand, saetze:saetze, laufrichtung:lr,
+    zuGross:einzel, zuGrossAnzahl:zuGross.length,
     projekt:$('projekt').value.trim(), leiter:$('leiter').value.trim(),
     material:$('material').value.trim()
   };
@@ -1187,56 +1531,99 @@ function zeigeErgebnis(){
   var teile=0; boards.forEach(function(o){ teile+=o.pl.teile.length; });
 
   var cls = verschnitt<0.15?'good':(verschnitt<0.30?'mid':'bad');
+  var bloecke=0, restFl=0, groesster=null;
+  boards.forEach(function(o){
+    bloecke += o.pl.bloecke||0;
+    (o.pl.reste||[]).forEach(function(rs){
+      restFl += rs.l*rs.b;
+      if(!groesster || rs.l*rs.b > groesster.l*groesster.b) groesster=rs;
+    });
+  });
   $('kpi').innerHTML =
     kpi(boards.length, boards.length===1?'Platte':'Platten') +
     kpi(teile,'Teile') +
     kpi((100*verschnitt).toFixed(1).replace('.',',')+' %','Verschnitt',cls) +
-    kpi((100*quote).toFixed(1).replace('.',',')+' %','Ausnutzung') +
-    kpi((flGes/1e6).toFixed(2).replace('.',',')+' m²','Materialeinsatz');
+    kpi(groesster ? ZLayout.fmt(groesster.l)+' × '+ZLayout.fmt(groesster.b) : '–',
+        'grösstes Reststück', groesster?'good':'') +
+    kpi((100*restFl/flGes).toFixed(1).replace('.',',')+' %','davon wiederverwendbar') +
+    kpi(bloecke,'Zuschnittgruppen');
 
   var dicken={}; erg.saetze.forEach(function(s){ dicken[s.dicke]=1; });
   var mehr = Object.keys(dicken).length>1;
   $('infobox').className='msg inf on';
   $('infobox').innerHTML = 'Platte <b>'+erg.platte.l+' × '+erg.platte.b+' mm</b>'+
     (erg.material?' · '+esc(erg.material):'')+
+    ' · '+esc(ZLayout.LR_TEXT[erg.laufrichtung])+
     ' · Fuge '+erg.fuge+' mm · Besäumung '+erg.rand+' mm'+
     (mehr?' · <b>'+Object.keys(dicken).sort(function(a,b){return b-a;}).join(' / ')+' mm</b> getrennt geplant':'');
 
   $('plaene').innerHTML = boards.map(function(o){
     var v=(100*o.pl.verschnitt).toFixed(1).replace('.',',');
+    var rs=(o.pl.reste||[])[0];
     return '<div class="board">'+
       '<div class="cap"><b>Platte '+o.nr+' von '+o.total+' · '+erg.platte.l+' × '+erg.platte.b+' × '+o.dicke+' mm</b>'+
-      '<span>'+o.pl.teile.length+' Teile · Verschnitt '+v+' %</span></div>'+
+      '<span>'+o.pl.teile.length+' Teile · '+(o.pl.bloecke||0)+' Gruppen · Verschnitt '+v+' %'+
+      (rs?' · Rest '+ZLayout.fmt(rs.l)+' × '+ZLayout.fmt(rs.b)+' mm':'')+'</span></div>'+
       '<div class="svgbox" style="max-width:'+Math.round(600*erg.platte.l/erg.platte.b)+'px">'+
-      svgPlan(erg.platte, o.pl.teile)+'</div></div>';
+      svgPlan(erg.platte, o.pl, erg.laufrichtung)+'</div></div>';
   }).join('');
 
   $('ergebnis').style.display='block';
   $('btnPdf').disabled=false;
-  $('ergebnis').scrollIntoView({behavior:'smooth',block:'start'});
+  if(!erg.zuGross.length) $('ergebnis').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function kpi(v,k,c){ return '<div><div class="v'+(c?' '+c:'')+'">'+v+'</div><div class="k">'+k+'</div></div>'; }
 function esc(s){ return String(s).replace(/[&<>"]/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 
 /* ---------------- SVG-Vorschau (gleiche Primitive wie PDF) ---------------- */
-function svgPlan(platte, teile){
-  var BW=260, BH=BW*platte.b/platte.l;
-  var lay=ZLayout.plan(platte, teile, {x:0,y:0,w:BW,h:BH});
-  var out=['<svg viewBox="0 0 '+BW+' '+BH+'" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">'];
-  lay.prims.forEach(function(p){
+var FARBE = { normal:'#111', gruen:'#4a7c30', rot:'#b8302c', grau:'#5a6673' };
+function farbe(p){
+  if(p.rot) return FARBE.rot;
+  if(p.gruen) return FARBE.gruen;
+  if(p.grau) return FARBE.grau;
+  return FARBE.normal;
+}
+function prims2svg(prims, W, H){
+  var out=['<svg viewBox="0 0 '+r(W)+' '+r(H)+'" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">'];
+  prims.forEach(function(p){
     if(p.t==='rect'){
-      var fill = p.fill ? 'rgb('+p.fill.join(',')+')' : (p.grau? '#f4f6f9':'none');
+      var fill = p.fill ? 'rgb('+p.fill.join(',')+')' : (p.grau? '#f7f8fa':'none');
       out.push('<rect x="'+r(p.x)+'" y="'+r(p.y)+'" width="'+r(p.w)+'" height="'+r(p.h)+
-        '" fill="'+fill+'" stroke="#111" stroke-width="'+r(p.stroke)+'"/>');
+        '" fill="'+fill+'" stroke="'+farbe(p)+'" stroke-width="'+r(p.stroke)+'"'+
+        (p.gestrichelt?' stroke-dasharray="1.6 1.2"':'')+'/>');
+    } else if(p.t==='pfeil'){
+      out.push(pfeilSvg(p.x1,p.y1,p.x2,p.y2));
     } else {
+      var tr = p.dreh ? ' transform="rotate(-90 '+r(p.x)+' '+r(p.y)+')"' : '';
       out.push('<text x="'+r(p.x)+'" y="'+r(p.y)+'" font-size="'+r(p.g)+
-        '" text-anchor="middle" fill="'+(p.grau?'#5a6673':'#111')+
-        '"'+(p.fett?' font-weight="700"':'')+'>'+esc(p.s)+'</text>');
+        '" text-anchor="middle" fill="'+farbe(p)+'"'+
+        (p.fett?' font-weight="700"':'')+tr+'>'+esc(p.s)+'</text>');
     }
   });
   out.push('</svg>');
   return out.join('');
+}
+function pfeilSvg(x1,y1,x2,y2){
+  var k=2.2, s='#8a97a6', w=0.9, o=[];
+  o.push('<line x1="'+r(x1)+'" y1="'+r(y1)+'" x2="'+r(x2)+'" y2="'+r(y2)+
+         '" stroke="'+s+'" stroke-width="'+w+'"/>');
+  var dx=x2-x1, dy=y2-y1, len=Math.sqrt(dx*dx+dy*dy)||1;
+  var ux=dx/len, uy=dy/len, px=-uy, py=ux;
+  [[x1,y1,1],[x2,y2,-1]].forEach(function(e){
+    var bx=e[0]+ux*k*e[2], by=e[1]+uy*k*e[2];
+    o.push('<path d="M'+r(e[0])+' '+r(e[1])+' L'+r(bx+px*k*0.55)+' '+r(by+py*k*0.55)+
+           ' M'+r(e[0])+' '+r(e[1])+' L'+r(bx-px*k*0.55)+' '+r(by-py*k*0.55)+
+           '" stroke="'+s+'" stroke-width="'+w+'" fill="none" stroke-linecap="round"/>');
+  });
+  return o.join('');
+}
+function svgPlan(platte, pl, lr){
+  var BW=260, extra = (lr && lr!=='egal') ? 7 : 0;
+  var BH=BW*platte.b/platte.l + extra;
+  var lay=ZLayout.plan(platte, pl.teile, {x:0,y:0,w:BW,h:BH},
+                       {reste: pl.reste, laufrichtung: lr});
+  return prims2svg(lay.prims, BW, BH);
 }
 function r(v){ return Math.round(v*100)/100; }
 
@@ -1285,6 +1672,7 @@ function baueDoc(){
     doc.setTextColor(85);
     var meta=[];
     if(erg.material) meta.push(erg.material);
+    meta.push(ZLayout.LR_TEXT[erg.laufrichtung]);
     meta.push('Fuge '+erg.fuge+' mm');
     meta.push('Besäumung '+erg.rand+' mm');
     meta.push('Verschnitt '+(100*pl.verschnitt).toFixed(1).replace('.',',')+' %');
@@ -1292,39 +1680,44 @@ function baueDoc(){
     doc.text(kurz(doc, meta.join('   ·   '), W-2*M-8, 7.6), M+4, M+20.4);
     doc.setTextColor(0);
 
+    /* Warnstreifen, wenn Teile nicht eingeplant werden konnten */
+    var warnH = 0;
+    if(erg.zuGross && erg.zuGross.length){
+      warnH = 7;
+      doc.setFillColor(184,48,44); doc.rect(M+4, M+22.2, W-2*M-8, 5.6, 'F');
+      doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(7.6);
+      var wt = 'ACHTUNG: '+erg.zuGrossAnzahl+' Teil'+(erg.zuGrossAnzahl>1?'e sind':' ist')+
+               ' zu gross für dieses Plattenformat und NICHT eingeplant: '+
+               erg.zuGross.map(function(t){
+                 return 'Pos. '+t.pos+' '+ZLayout.fmt(t.l)+'×'+ZLayout.fmt(t.b); }).join(', ');
+      doc.text(kurz(doc, wt, W-2*M-12, 7.6), M+6, M+26);
+      doc.setTextColor(0);
+    }
+
     /* Plan – zwei Anordnungen durchrechnen, die mit dem groesseren
        Massstab gewinnt (schmale Platten: Liste rechts, lange: unten) */
     var liste = ZLayout.liste(pl.teile);
     var zeilenH = 3.5;
-    var iX = M+4, iY = M+23.5, iW = W-2*M-8, iH = (H-M-5.5) - iY;
+    var iX = M+4, iY = M+23.5+warnH, iW = W-2*M-8, iH = (H-M-5.5) - iY;
 
+    var pf = (erg.laufrichtung==='egal') ? 0 : 7;
+    var pfX = (erg.laufrichtung==='quer') ? pf : 0;
+    var pfY = (erg.laufrichtung==='laengs') ? pf : 0;
     var spaltenA = liste.length<=6?1:(liste.length<=12?2:(liste.length<=18?3:4));
     var listeHA = 4.6 + Math.ceil(liste.length/spaltenA)*zeilenH;
     var boxA = {x:iX, y:iY, w:iW, h:iH - listeHA - 1.5};
-    var skalaA = Math.min(boxA.w/erg.platte.l, boxA.h/erg.platte.b);
+    var skalaA = Math.min((boxA.w-pfX)/erg.platte.l, (boxA.h-pfY)/erg.platte.b);
 
     var listW = 52;
     var boxB = {x:iX, y:iY, w:iW-listW-5, h:iH};
     var skalaB = (liste.length*zeilenH + 2 <= iH) ?
-                 Math.min(boxB.w/erg.platte.l, boxB.h/erg.platte.b) : -1;
+                 Math.min((boxB.w-pfX)/erg.platte.l, (boxB.h-pfY)/erg.platte.b) : -1;
 
     var rechts = skalaB > skalaA * 1.02;
     var box = rechts ? boxB : boxA;
-    var lay = ZLayout.plan(erg.platte, pl.teile, box);
-
-    lay.prims.forEach(function(p){
-      if(p.t==='rect'){
-        doc.setLineWidth(p.stroke);
-        if(p.fill){ doc.setFillColor(p.fill[0],p.fill[1],p.fill[2]); doc.setDrawColor(30); doc.rect(p.x,p.y,p.w,p.h,'FD'); }
-        else { doc.setDrawColor(0); doc.rect(p.x,p.y,p.w,p.h); }
-      } else {
-        doc.setFont('helvetica', p.fett?'bold':'normal');
-        doc.setFontSize(ZLayout.mm2pt(p.g));
-        doc.setTextColor(p.grau||0);
-        doc.text(p.s, p.x, p.y, {align:'center'});
-        doc.setTextColor(0);
-      }
-    });
+    var lay = ZLayout.plan(erg.platte, pl.teile, box,
+                           {reste: pl.reste, laufrichtung: erg.laufrichtung});
+    zeichnePrims(doc, lay.prims);
 
     /* Positionsliste */
     doc.setLineWidth(0.3); doc.setDrawColor(150);
@@ -1368,6 +1761,51 @@ function baueDoc(){
   });
 
   return doc;
+}
+/* Primitive aus layout.js im PDF zeichnen */
+var PDF_FARBE = { normal:[17,17,17], gruen:[74,124,48], rot:[184,48,44], grau:[90,102,115] };
+function pdfFarbe(p){
+  if(p.rot) return PDF_FARBE.rot;
+  if(p.gruen) return PDF_FARBE.gruen;
+  if(p.grau) return [p.grau,p.grau,p.grau];
+  return PDF_FARBE.normal;
+}
+function zeichnePrims(doc, prims){
+  prims.forEach(function(p){
+    var c = pdfFarbe(p);
+    if(p.t==='rect'){
+      doc.setLineWidth(p.stroke);
+      doc.setDrawColor(c[0],c[1],c[2]);
+      if(p.gestrichelt) doc.setLineDashPattern([1.1,0.9],0);
+      if(p.fill){ doc.setFillColor(p.fill[0],p.fill[1],p.fill[2]); doc.rect(p.x,p.y,p.w,p.h,'FD'); }
+      else doc.rect(p.x,p.y,p.w,p.h);
+      if(p.gestrichelt) doc.setLineDashPattern([],0);
+      doc.setDrawColor(0);
+    } else if(p.t==='pfeil'){
+      pdfPfeil(doc, p.x1,p.y1,p.x2,p.y2);
+    } else {
+      doc.setFont('helvetica', p.fett?'bold':'normal');
+      doc.setFontSize(ZLayout.mm2pt(p.g));
+      doc.setTextColor(c[0],c[1],c[2]);
+      var o={align:'center'};
+      if(p.dreh){ o.angle = p.dreh; }
+      doc.text(p.s, p.x, p.y, o);
+      doc.setTextColor(0);
+    }
+  });
+}
+function pdfPfeil(doc, x1,y1,x2,y2){
+  var k=2.2;
+  doc.setLineWidth(0.3); doc.setDrawColor(138,151,166);
+  doc.line(x1,y1,x2,y2);
+  var dx=x2-x1, dy=y2-y1, len=Math.sqrt(dx*dx+dy*dy)||1;
+  var ux=dx/len, uy=dy/len, px=-uy, py=ux;
+  [[x1,y1,1],[x2,y2,-1]].forEach(function(e){
+    var bx=e[0]+ux*k*e[2], by=e[1]+uy*k*e[2];
+    doc.line(e[0],e[1], bx+px*k*0.55, by+py*k*0.55);
+    doc.line(e[0],e[1], bx-px*k*0.55, by-py*k*0.55);
+  });
+  doc.setDrawColor(0);
 }
 function kurz(doc, txt, maxW, size){
   doc.setFontSize(size);
@@ -1451,6 +1889,13 @@ function importiere(file){
 /* ---------------- Verdrahtung ---------------- */
 baueplatten();
 setzeZeilen(null);
+
+Array.prototype.forEach.call(document.querySelectorAll('.lro'), function(el){
+  el.addEventListener('click', function(){
+    Array.prototype.forEach.call(document.querySelectorAll('.lro'), function(e){ e.classList.remove('on'); });
+    el.classList.add('on');
+  });
+});
 
 $('btnAdd').addEventListener('click', function(){ addZeile(); });
 $('btnBsp').addEventListener('click', function(){ setzeZeilen(BEISPIEL.map(function(b){return b;})); });
