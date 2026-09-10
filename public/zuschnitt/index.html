@@ -107,6 +107,7 @@
   .kpi div{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
   .kpi .v{font-size:23px;font-weight:600;letter-spacing:-.01em}
   .kpi .k{font-size:10.5px;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
+  .kpi .v.sm{font-size:17px;line-height:1.25}
   .kpi .v.good{color:#6fbf90}.kpi .v.mid{color:#d9a05b}.kpi .v.bad{color:#d3706e}
 
   .board{margin-bottom:20px}
@@ -137,7 +138,7 @@
     <a class="back" href="/" title="Zurück zur Übersicht">‹</a>
     <div>
       <h1>Zuschnitt</h1>
-      <div class="sub">Plattenoptimierung mit 10 mm Fuge und Randbesäumung · A5-Etikette für die Schreinerei</div>
+      <div class="sub">Plattenoptimierung für die Schreinerei · Zuschnittplan A5 und Etikettenbogen A4</div>
     </div>
   </header>
 
@@ -146,25 +147,26 @@
   <section>
     <h2><span class="num">1</span>Auftrag</h2>
     <div class="row c3">
-      <div><label class="fl" for="projekt">Projektname</label>
+      <div><label class="fl" for="projekt">Projektnummer / Projektname <b style="color:#d3706e">*</b></label>
         <input type="text" id="projekt" placeholder="z. B. 26294 ON_Rooftop"></div>
-      <div><label class="fl" for="leiter">Projektleiter*in</label>
-        <input type="text" id="leiter" placeholder="Kürzel"></div>
+      <div><label class="fl" for="leiter">Projektleiter*in <b style="color:#d3706e">*</b></label>
+        <input type="text" id="leiter" placeholder="Kürzel, z. B. SaBr"></div>
       <div><label class="fl" for="material">Material</label>
         <input type="text" id="material" placeholder="z. B. Spa roh, Kunstharz Alu"></div>
     </div>
+    <div class="hint"><b style="color:#d3706e">*</b> Pflichtfelder – sie stehen auf jedem
+      Zuschnittplan und auf jeder Etikette.</div>
   </section>
 
   <section>
     <h2><span class="num">2</span>Plattenformat</h2>
     <div class="platten" id="platten"></div>
     <div class="row c3" style="margin-top:14px">
-      <div><label class="fl" for="dicke">Plattendicke</label>
-        <select id="dicke"><option value="19">19 mm</option><option value="15">15 mm</option></select></div>
-      <div><label class="fl" for="fuge">Fuge zwischen den Teilen</label>
+      <div><label class="fl" for="fuge">Fuge zwischen den Teilen (mm)</label>
         <input type="number" id="fuge" value="10" min="0" step="1"></div>
-      <div><label class="fl" for="rand">Besäumung am Plattenrand</label>
+      <div><label class="fl" for="rand">Besäumung am Plattenrand (mm)</label>
         <input type="number" id="rand" value="10" min="0" step="1"></div>
+      <div></div>
     </div>
 
     <label class="fl" style="margin-top:16px">Holzlaufrichtung</label>
@@ -206,7 +208,6 @@
           <th style="width:86px">Stück</th>
           <th>Länge (mm)</th>
           <th>Breite (mm)</th>
-          <th style="width:96px">Dicke</th>
           <th class="del"></th>
         </tr></thead>
         <tbody id="tbody"></tbody>
@@ -220,7 +221,7 @@
       <button class="b" id="btnImport">Excel importieren</button>
       <input type="file" id="file" accept=".xlsx,.xls,.csv" style="display:none">
     </div>
-    <div class="drop" id="drop" style="margin-top:12px">Excel-Datei hierhin ziehen (Spalten: Position · Stück · Länge · Breite · Dicke)</div>
+    <div class="drop" id="drop" style="margin-top:12px">Excel-Datei hierhin ziehen (Spalten: Position · Stück · Länge · Breite)</div>
   </section>
 
   <section id="ergebnis">
@@ -245,7 +246,8 @@
 
 <div class="foot">
   <button class="b prim big" id="btnRechnen">Zuschnitt berechnen</button>
-  <button class="b big" id="btnPdf" disabled>Etiketten A5 herunterladen</button>
+  <button class="b big" id="btnPdf" disabled>Zuschnittplan A5</button>
+  <button class="b big" id="btnEtik" disabled>Etiketten A4 (8 pro Bogen)</button>
 </div>
 
 <script>/* jspdf.umd.min.js */
@@ -1285,26 +1287,62 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return e.pos + '-' + e.von + ' … ' + e.pos + '-' + e.bis;
   }
 
+  /* Positionsbuchstabe: 0 -> A, 25 -> Z, 26 -> AA */
+  function buchstabe(i) {
+    var s = '';
+    i = Math.max(0, Math.floor(i));
+    do { s = String.fromCharCode(65 + (i % 26)) + s; i = Math.floor(i / 26) - 1; } while (i >= 0);
+    return s;
+  }
+
   /* Laufende Nummern vergeben: ueber alle Platten hinweg je Position
      durchnummeriert, innerhalb einer Platte in Lesereihenfolge
-     (oben links zuerst). Setzt t.nr und t.label. */
-  function nummeriere(platten, platteB) {
-    var zaehler = {};
-    for (var b = 0; b < platten.length; b++) {
+     (oben links zuerst). Setzt t.nr, t.gesamt, t.label ("A-3") und
+     t.labelVoll ("A-3/12"). */
+  function nummeriere(platten) {
+    var zaehler = {}, gesamt = {};
+    var b, i, t;
+    for (b = 0; b < platten.length; b++) {
+      for (i = 0; i < platten[b].teile.length; i++) {
+        t = platten[b].teile[i];
+        gesamt[t.pos] = (gesamt[t.pos] || 0) + 1;
+      }
+    }
+    for (b = 0; b < platten.length; b++) {
       var teile = platten[b].teile.slice();
       teile.sort(function (a, c) {
         var da = (c.y + c.b) - (a.y + a.b);        // oberste Reihe zuerst
         if (Math.abs(da) > 0.5) return da;
         return a.x - c.x;                           // dann von links
       });
-      for (var i = 0; i < teile.length; i++) {
-        var t = teile[i];
+      for (i = 0; i < teile.length; i++) {
+        t = teile[i];
         zaehler[t.pos] = (zaehler[t.pos] || 0) + 1;
         t.nr = zaehler[t.pos];
+        t.gesamt = gesamt[t.pos];
         t.label = t.pos + '-' + t.nr;
+        t.labelVoll = t.pos + '-' + t.nr + '/' + t.gesamt;
       }
     }
     return platten;
+  }
+
+  /* Alle Teile aller Platten in Etiketten-Reihenfolge: nach Position,
+     darin nach laufender Nummer. */
+  function etikettenListe(platten) {
+    var alle = [];
+    for (var b = 0; b < platten.length; b++) {
+      for (var i = 0; i < platten[b].teile.length; i++) {
+        var t = platten[b].teile[i];
+        alle.push({ pos: t.pos, nr: t.nr, gesamt: t.gesamt, label: t.label,
+                    labelVoll: t.labelVoll, l: t.l, b: t.b, platte: platten[b].nr });
+      }
+    }
+    alle.sort(function (a, c) {
+      if (a.pos !== c.pos) return String(a.pos).localeCompare(String(c.pos));
+      return a.nr - c.nr;
+    });
+    return alle;
   }
 
   var LR_TEXT = {
@@ -1312,10 +1350,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     laengs: 'Laufrichtung längs (parallel zur Plattenlänge)',
     quer:   'Laufrichtung quer (parallel zur Plattenbreite)'
   };
+  var LR_KURZ = { egal: 'Laufrichtung egal', laengs: 'Laufrichtung längs', quer: 'Laufrichtung quer' };
 
   return { plan: plan, passtNicht: passtNicht, liste: liste, bereich: bereich,
-           nummeriere: nummeriere, fmt: fmt, mm2pt: mm2pt, PT: PT,
-           textBreite: textBreite, LR_TEXT: LR_TEXT };
+           nummeriere: nummeriere, buchstabe: buchstabe, etikettenListe: etikettenListe,
+           fmt: fmt, mm2pt: mm2pt, PT: PT, textBreite: textBreite, LR_TEXT: LR_TEXT, LR_KURZ: LR_KURZ };
 });
 
 </script>
@@ -1329,13 +1368,22 @@ var PLATTEN = [
   {l:2500,b:1000},{l:5000,b:1000},{l:5000,b:1250}
 ];
 var BEISPIEL = [
-  {pos:'1',stk:12,l:430, b:410,d:19},
-  {pos:'2',stk:6, l:1998,b:430,d:19},
-  {pos:'3',stk:3, l:1998,b:448,d:19}
+  {pos:'A',stk:12,l:430, b:410},
+  {pos:'B',stk:6, l:1998,b:430},
+  {pos:'C',stk:3, l:1998,b:448}
 ];
 
 var $ = function(id){ return document.getElementById(id); };
 var ERG = null;
+
+/* Positionsbezeichnung: leer oder Zahl -> Buchstabe (1 -> A, 2 -> B),
+   sonst die Eingabe des Nutzers in Grossbuchstaben. */
+function posBuchstabe(roh, index){
+  var t = String(roh==null?'':roh).trim();
+  if(!t) return ZLayout.buchstabe(index);
+  if(/^\d+$/.test(t)) return ZLayout.buchstabe(parseInt(t,10)-1);
+  return t.toUpperCase();
+}
 
 /* ---------------- Plattenauswahl ---------------- */
 function baueplatten(){
@@ -1375,7 +1423,6 @@ function zeile(d){
     '<td><input type="number" class="c-stk" min="0" step="1" value="'+(d.stk!==undefined?d.stk:'')+'"></td>'+
     '<td><input type="number" class="c-l"   min="1" step="1" value="'+(d.l!==undefined?d.l:'')+'"></td>'+
     '<td><input type="number" class="c-b"   min="1" step="1" value="'+(d.b!==undefined?d.b:'')+'"></td>'+
-    '<td><input type="number" class="c-d"   min="1" step="1" value="'+(d.d!==undefined?d.d:'')+'"></td>'+
     '<td class="del"><button class="x" title="Zeile löschen">×</button></td>';
   tr.querySelector('button.x').addEventListener('click', function(){
     tr.remove(); if(!$('tbody').children.length) addZeile();
@@ -1392,10 +1439,8 @@ function zeile(d){
 function addZeile(d){
   var tr = zeile(d);
   $('tbody').appendChild(tr);
-  if(!d){
-    var n = $('tbody').children.length;
-    tr.querySelector('.c-pos').value = String(n);
-    tr.querySelector('.c-d').value = $('dicke').value;
+  if(!d || d.pos===undefined || d.pos===''){
+    tr.querySelector('.c-pos').value = ZLayout.buchstabe($('tbody').children.length - 1);
   }
   return tr;
 }
@@ -1408,10 +1453,9 @@ function leseZeilen(){
   var out=[], leer=0;
   Array.prototype.forEach.call($('tbody').children, function(tr){
     var g=function(c){ return tr.querySelector(c).value.trim(); };
-    var pos=g('.c-pos'), stk=parseFloat(g('.c-stk')), l=parseFloat(g('.c-l')),
-        b=parseFloat(g('.c-b')), d=parseFloat(g('.c-d'));
+    var pos=g('.c-pos'), stk=parseFloat(g('.c-stk')), l=parseFloat(g('.c-l')), b=parseFloat(g('.c-b'));
     if(!pos && !g('.c-stk') && !g('.c-l') && !g('.c-b')){ leer++; return; }
-    out.push({pos:pos||'?', stk:stk, l:l, b:b, d:isNaN(d)?parseFloat($('dicke').value):d});
+    out.push({pos:posBuchstabe(pos, out.length), stk:stk, l:l, b:b});
   });
   return out;
 }
@@ -1442,10 +1486,19 @@ function zeigeZuGross(liste, platte, lr){
 
 function rechnen(){
   zeigeFehler('');
+  var projekt=$('projekt').value.trim(), leiter=$('leiter').value.trim();
+  var probleme=[];
+  if(!projekt) probleme.push('Projektnummer / Projektname fehlt – die Angabe steht auf jedem Plan und jeder Etikette.');
+  if(!leiter)  probleme.push('Projektleiter*in fehlt.');
+  if(probleme.length){
+    zeigeFehler(probleme.join('<br>'));
+    $(projekt?'leiter':'projekt').focus();
+    return;
+  }
+
   var zeilen = leseZeilen();
   if(!zeilen.length){ zeigeFehler('Es sind noch keine Positionen erfasst.'); return; }
 
-  var probleme=[];
   zeilen.forEach(function(z,i){
     if(!(z.stk>0))  probleme.push('Zeile '+(i+1)+': Stückzahl fehlt oder ist 0.');
     if(!(z.l>0))    probleme.push('Zeile '+(i+1)+': Länge fehlt.');
@@ -1457,23 +1510,10 @@ function rechnen(){
   var fuge = Math.max(0, parseFloat($('fuge').value)||0);
   var rand = Math.max(0, parseFloat($('rand').value)||0);
 
-  // nach Dicke gruppieren -> je Dicke ein eigener Plansatz
-  var gruppen={}, reihen=[];
-  zeilen.forEach(function(z){
-    var k=String(z.d);
-    if(!gruppen[k]){ gruppen[k]={dicke:z.d, pos:[]}; reihen.push(k); }
-    gruppen[k].pos.push({pos:z.pos, stk:z.stk, l:z.l, b:z.b});
-  });
-  reihen.sort(function(a,c){ return parseFloat(c)-parseFloat(a); });
-
   var lr = gewaehlteLaufrichtung();
-  var saetze=[], zuGross=[];
-  reihen.forEach(function(k){
-    var g=gruppen[k];
-    var r=ZPack.berechne(g.pos, platte, {rand:rand, fuge:fuge, laufrichtung:lr});
-    r.zuGross.forEach(function(t){ zuGross.push({pos:t.pos, l:t.ql, b:t.qb, d:g.dicke}); });
-    if(r.platten.length) saetze.push({dicke:g.dicke, res:r});
-  });
+  var res = ZPack.berechne(zeilen, platte, {rand:rand, fuge:fuge, laufrichtung:lr});
+  var zuGross = res.zuGross.map(function(t){ return {pos:t.pos, l:t.ql, b:t.qb}; });
+  var saetze = res.platten.length ? [{res:res}] : [];
 
   // zu grosse Teile: einmal je Mass, mit Bild
   var seen={}, einzel=[];
@@ -1499,7 +1539,7 @@ function rechnen(){
   zeigeZuGross(einzel, platte, lr);
 
   if(!saetze.length){
-    ERG=null; $('btnPdf').disabled=true;
+    ERG=null; $('btnPdf').disabled=true; $('btnEtik').disabled=true;
     $('kpi').innerHTML=''; $('plaene').innerHTML=''; $('infobox').className='msg inf';
     $('ergebnis').style.display = einzel.length ? 'block' : 'none';
     return;
@@ -1508,8 +1548,7 @@ function rechnen(){
   ERG = {
     platte:platte, fuge:fuge, rand:rand, saetze:saetze, laufrichtung:lr,
     zuGross:einzel, zuGrossAnzahl:zuGross.length,
-    projekt:$('projekt').value.trim(), leiter:$('leiter').value.trim(),
-    material:$('material').value.trim()
+    projekt:projekt, leiter:leiter, material:$('material').value.trim()
   };
   // laufende Teilenummern (1-1, 1-2, ...) ueber alle Platten hinweg
   ZLayout.nummeriere(alleBoards(ERG).map(function(o){ return o.pl; }));
@@ -1519,7 +1558,7 @@ function rechnen(){
 function alleBoards(erg){
   var out=[];
   erg.saetze.forEach(function(s){
-    s.res.platten.forEach(function(pl){ out.push({dicke:s.dicke, pl:pl}); });
+    s.res.platten.forEach(function(pl){ out.push({pl:pl}); });
   });
   out.forEach(function(o,i){ o.nr=i+1; o.total=out.length; });
   return out;
@@ -1547,24 +1586,22 @@ function zeigeErgebnis(){
     kpi(teile,'Teile') +
     kpi((100*verschnitt).toFixed(1).replace('.',',')+' %','Verschnitt',cls) +
     kpi(groesster ? ZLayout.fmt(groesster.l)+' × '+ZLayout.fmt(groesster.b) : '–',
-        'grösstes Reststück', groesster?'good':'') +
+        'grösstes Reststück', groesster?'good sm':'sm') +
     kpi((100*restFl/flGes).toFixed(1).replace('.',',')+' %','davon wiederverwendbar') +
     kpi(bloecke,'Zuschnittgruppen');
 
-  var dicken={}; erg.saetze.forEach(function(s){ dicken[s.dicke]=1; });
-  var mehr = Object.keys(dicken).length>1;
   $('infobox').className='msg inf on';
-  $('infobox').innerHTML = 'Platte <b>'+erg.platte.l+' × '+erg.platte.b+' mm</b>'+
+  $('infobox').innerHTML = '<b>'+esc(erg.projekt)+'</b> · PL '+esc(erg.leiter)+
+    ' · Platte <b>'+erg.platte.l+' × '+erg.platte.b+' mm</b>'+
     (erg.material?' · '+esc(erg.material):'')+
     ' · '+esc(ZLayout.LR_TEXT[erg.laufrichtung])+
-    ' · Fuge '+erg.fuge+' mm · Besäumung '+erg.rand+' mm'+
-    (mehr?' · <b>'+Object.keys(dicken).sort(function(a,b){return b-a;}).join(' / ')+' mm</b> getrennt geplant':'');
+    ' · Fuge '+erg.fuge+' mm · Besäumung '+erg.rand+' mm';
 
   $('plaene').innerHTML = boards.map(function(o){
     var v=(100*o.pl.verschnitt).toFixed(1).replace('.',',');
     var rs=(o.pl.reste||[])[0];
     return '<div class="board">'+
-      '<div class="cap"><b>Platte '+o.nr+' von '+o.total+' · '+erg.platte.l+' × '+erg.platte.b+' × '+o.dicke+' mm</b>'+
+      '<div class="cap"><b>Platte '+o.nr+' von '+o.total+' · '+erg.platte.l+' × '+erg.platte.b+' mm</b>'+
       '<span>'+o.pl.teile.length+' Teile · '+(o.pl.bloecke||0)+' Gruppen · Verschnitt '+v+' %'+
       (rs?' · Rest '+ZLayout.fmt(rs.l)+' × '+ZLayout.fmt(rs.b)+' mm':'')+'</span></div>'+
       '<div class="svgbox" style="max-width:'+Math.round(600*erg.platte.l/erg.platte.b)+'px">'+
@@ -1572,7 +1609,7 @@ function zeigeErgebnis(){
   }).join('');
 
   $('ergebnis').style.display='block';
-  $('btnPdf').disabled=false;
+  $('btnPdf').disabled=false; $('btnEtik').disabled=false;
   if(!erg.zuGross.length) $('ergebnis').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function kpi(v,k,c){ return '<div><div class="v'+(c?' '+c:'')+'">'+v+'</div><div class="k">'+k+'</div></div>'; }
@@ -1653,47 +1690,44 @@ function baueDoc(){
     doc.setDrawColor(0); doc.setLineWidth(0.5);
     doc.rect(M, M, W-2*M, H-2*M);
 
-    doc.setFont('helvetica','bold'); doc.setFontSize(15);
-    doc.text('ZUSCHNITTPLAN', M+4, M+8.4);
+    doc.setFont('helvetica','bold'); doc.setFontSize(12.5);
+    doc.text('ZUSCHNITTPLAN', M+4, M+7.4);
+    doc.text('PLATTE '+o.nr+' / '+o.total, W-M-4, M+7.4, {align:'right'});
 
-    doc.setFont('helvetica','bold'); doc.setFontSize(14);
-    doc.text('PLATTE '+o.nr+' / '+o.total, W-M-4, M+8.4, {align:'right'});
+    // Projektnummer und Projektleiter gross in die Kopfzeile
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.8);
+    doc.setTextColor(120);
+    doc.text('PROJEKT', M+4, M+13.4);
+    doc.text('PROJEKTLEITER', W-M-4, M+13.4, {align:'right'});
+    doc.setTextColor(0);
+    doc.setFont('helvetica','bold'); doc.setFontSize(13);
+    doc.text(kurz(doc, erg.projekt, 118, 13), M+4, M+19.2);
+    doc.text(kurz(doc, erg.leiter, 50, 13), W-M-4, M+19.2, {align:'right'});
 
-    doc.setFont('helvetica','normal'); doc.setFontSize(8.4);
-    var z1 = [];
-    if(erg.projekt) z1.push(erg.projekt);
-    if(erg.leiter) z1.push('PL '+erg.leiter);
-    doc.text(kurz(doc, z1.join('   ·   '), 110, 8.4), M+4, M+13.6);
+    doc.setLineWidth(0.4); doc.line(M+4, M+21.6, W-M-4, M+21.6);
 
-    doc.setFont('helvetica','bold'); doc.setFontSize(9.2);
-    var mass = erg.platte.l+' × '+erg.platte.b+' × '+o.dicke+' mm';
-    doc.text(mass, W-M-4, M+13.6, {align:'right'});
-
-    doc.setLineWidth(0.3); doc.line(M+4, M+16.2, W-M-4, M+16.2);
-
-    doc.setFont('helvetica','normal'); doc.setFontSize(7.6);
-    doc.setTextColor(85);
-    var meta=[];
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.4);
+    doc.setTextColor(95);
+    var meta=[erg.platte.l+' × '+erg.platte.b+' mm'];
     if(erg.material) meta.push(erg.material);
-    meta.push(ZLayout.LR_TEXT[erg.laufrichtung]);
-    meta.push('Fuge '+erg.fuge+' mm');
-    meta.push('Besäumung '+erg.rand+' mm');
+    meta.push(ZLayout.LR_KURZ[erg.laufrichtung]);
+    meta.push('Fuge/Besäumung '+erg.fuge+'/'+erg.rand+' mm');
     meta.push('Verschnitt '+(100*pl.verschnitt).toFixed(1).replace('.',',')+' %');
     meta.push(pl.teile.length+' Teile');
-    doc.text(kurz(doc, meta.join('   ·   '), W-2*M-8, 7.6), M+4, M+20.4);
+    doc.text(kurz(doc, meta.join('   ·   '), W-2*M-8, 7.4), M+4, M+25.4);
     doc.setTextColor(0);
 
     /* Warnstreifen, wenn Teile nicht eingeplant werden konnten */
     var warnH = 0;
     if(erg.zuGross && erg.zuGross.length){
       warnH = 7;
-      doc.setFillColor(184,48,44); doc.rect(M+4, M+22.2, W-2*M-8, 5.6, 'F');
+      doc.setFillColor(184,48,44); doc.rect(M+4, M+27.4, W-2*M-8, 5.6, 'F');
       doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(7.6);
       var wt = 'ACHTUNG: '+erg.zuGrossAnzahl+' Teil'+(erg.zuGrossAnzahl>1?'e sind':' ist')+
                ' zu gross für dieses Plattenformat und NICHT eingeplant: '+
                erg.zuGross.map(function(t){
                  return 'Pos. '+t.pos+' '+ZLayout.fmt(t.l)+'×'+ZLayout.fmt(t.b); }).join(', ');
-      doc.text(kurz(doc, wt, W-2*M-12, 7.6), M+6, M+26);
+      doc.text(kurz(doc, wt, W-2*M-12, 7.6), M+6, M+31.2);
       doc.setTextColor(0);
     }
 
@@ -1701,7 +1735,7 @@ function baueDoc(){
        Massstab gewinnt (schmale Platten: Liste rechts, lange: unten) */
     var liste = ZLayout.liste(pl.teile);
     var zeilenH = 3.5;
-    var iX = M+4, iY = M+23.5+warnH, iW = W-2*M-8, iH = (H-M-5.5) - iY;
+    var iX = M+4, iY = M+28.6+warnH, iW = W-2*M-8, iH = (H-M-5.5) - iY;
 
     var pf = (erg.laufrichtung==='egal') ? 0 : 7;
     var pfX = (erg.laufrichtung==='quer') ? pf : 0;
@@ -1765,6 +1799,70 @@ function baueDoc(){
 
   return doc;
 }
+/* ---------------- Etikettenbogen A4: 2 x 4 Etiketten à 105 x 74,25 mm ----------------
+   Eine Etikette pro Teil, sortiert nach Position und laufender Nummer:
+   A-1/4, A-2/4, … B-1/6, …                                                        */
+function etiketten(){
+  var doc = baueEtiketten();
+  if(!doc) return;
+  var name = 'Etiketten' + (ERG.projekt? '_'+ERG.projekt.replace(/[^\w\-]+/g,'_') : '') + '.pdf';
+  doc.save(name);
+}
+function baueEtiketten(){
+  if(!ERG) return null;
+  var erg = ERG;
+  var teile = ZLayout.etikettenListe(alleBoards(erg).map(function(o){ return o.pl; }));
+  if(!teile.length) return null;
+
+  var jsPDF = window.jspdf.jsPDF;
+  var doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+  var EW = 105, EH = 74.25, SP = 2, ZE = 4, PRO = SP*ZE;
+  var P = 7;                                   // Innenabstand der Etikette
+
+  teile.forEach(function(t, i){
+    if(i && i % PRO === 0) doc.addPage();
+    var k = i % PRO;
+    var x = (k % SP) * EW, y = Math.floor(k / SP) * EH;
+
+    // Schnittlinie
+    doc.setDrawColor(205); doc.setLineWidth(0.2);
+    doc.setLineDashPattern([1.2,1.2],0);
+    doc.rect(x, y, EW, EH);
+    doc.setLineDashPattern([],0);
+
+    // Kopf: Projekt links, Projektleiter rechts
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.8); doc.setTextColor(125);
+    doc.text('PROJEKT', x+P, y+P+2.4);
+    doc.text('PROJEKTLEITER', x+EW-P, y+P+2.4, {align:'right'});
+    doc.setTextColor(0); doc.setFont('helvetica','bold'); doc.setFontSize(11.5);
+    doc.text(kurz(doc, erg.projekt, EW-2*P-30, 11.5), x+P, y+P+8.4);
+    doc.text(kurz(doc, erg.leiter, 28, 11.5), x+EW-P, y+P+8.4, {align:'right'});
+
+    doc.setDrawColor(60); doc.setLineWidth(0.4);
+    doc.line(x+P, y+P+11.4, x+EW-P, y+P+11.4);
+    doc.setDrawColor(0);
+
+    // Positionskennzeichen gross, Groesse an die Breite angepasst
+    doc.setFont('helvetica','bold');
+    var g = 34, maxB = EW - 2*P;
+    do { doc.setFontSize(g); g -= 1; } while (g > 10 && doc.getTextWidth(t.labelVoll) > maxB);
+    doc.text(t.labelVoll, x+EW/2, y+EH*0.63, {align:'center'});
+
+    // Mass und Herkunft
+    doc.setFont('helvetica','normal'); doc.setFontSize(11);
+    doc.setTextColor(55);
+    doc.text(ZLayout.fmt(t.l)+' × '+ZLayout.fmt(t.b)+' mm', x+EW/2, y+EH*0.63+8.6, {align:'center'});
+    doc.setTextColor(0);
+
+    doc.setFontSize(6.8); doc.setTextColor(140);
+    doc.text('Pos. '+t.pos+' · Stück '+t.nr+' von '+t.gesamt, x+P, y+EH-P+1.6);
+    doc.text('Platte '+t.platte, x+EW-P, y+EH-P+1.6, {align:'right'});
+    doc.setTextColor(0);
+  });
+
+  return doc;
+}
+
 /* Primitive aus layout.js im PDF zeichnen */
 var PDF_FARBE = { normal:[17,17,17], gruen:[74,124,48], rot:[184,48,44], grau:[90,102,115] };
 function pdfFarbe(p){
@@ -1823,16 +1921,15 @@ var SPALTEN = [
   {key:'pos', label:'Position', aliases:['position','pos','pos.','nr','nr.','nummer']},
   {key:'stk', label:'Stück',    aliases:['stück','stuck','stk','stk.','anzahl','menge','qty']},
   {key:'l',   label:'Länge',    aliases:['länge','laenge','lange','l','länge (mm)','zuschnitt l']},
-  {key:'b',   label:'Breite',   aliases:['breite','b','breite (mm)','h','höhe','hoehe']},
-  {key:'d',   label:'Dicke',    aliases:['dicke','d','stärke','staerke','dicke (mm)']}
+  {key:'b',   label:'Breite',   aliases:['breite','b','breite (mm)','h','höhe','hoehe']}
 ];
 function norm(s){ return String(s==null?'':s).toLowerCase().replace(/\s+/g,' ').trim(); }
 
 function vorlage(){
-  var aoa=[['Position','Stück','Länge','Breite','Dicke']];
-  BEISPIEL.forEach(function(b){ aoa.push([b.pos,b.stk,b.l,b.b,b.d]); });
+  var aoa=[['Position','Stück','Länge','Breite']];
+  BEISPIEL.forEach(function(b){ aoa.push([b.pos,b.stk,b.l,b.b]); });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:11},{wch:9},{wch:12},{wch:12},{wch:9}];
+  ws['!cols']=[{wch:11},{wch:9},{wch:12},{wch:12}];
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Zuschnitt');
   XLSX.writeFile(wb, 'Vorlage_Zuschnitt.xlsx');
@@ -1862,7 +1959,7 @@ function importiere(file){
         if(n>bestN){ bestN=n; bestI=i; bestMap=map; }
       }
       if(bestN<3) throw new Error('Kopfzeile nicht erkannt. Erwartet werden Spalten wie ' +
-        '„Position“, „Stück“, „Länge“, „Breite“, „Dicke“ – am einfachsten mit der Excel-Vorlage.');
+        '„Position“, „Stück“, „Länge“ und „Breite“ – am einfachsten mit der Excel-Vorlage.');
 
       var rows=[], nr=0;
       for(var r2=bestI+1;r2<aoa.length;r2++){
@@ -1871,12 +1968,10 @@ function importiere(file){
           return parseFloat(String(v).replace(',','.').replace(/[^\d.\-]/g,'')); };
         var l=num('l'), b=num('b'), stk=num('stk');
         if(!(l>0)||!(b>0)) continue;
+        var roh = (bestMap.pos!==undefined) ? row[bestMap.pos] : '';
+        rows.push({pos: posBuchstabe(roh, nr),
+                   stk: (stk>0?Math.round(stk):1), l:l, b:b});
         nr++;
-        var d=num('d');
-        rows.push({pos: (bestMap.pos!==undefined && String(row[bestMap.pos]).trim()) ?
-                        String(row[bestMap.pos]).trim() : String(nr),
-                   stk: (stk>0?Math.round(stk):1), l:l, b:b,
-                   d: (d>0?d:parseFloat($('dicke').value))});
       }
       if(!rows.length) throw new Error('Es wurden keine gültigen Zeilen gefunden (Länge und Breite müssen Zahlen > 0 sein).');
       setzeZeilen(rows);
@@ -1903,17 +1998,14 @@ Array.prototype.forEach.call(document.querySelectorAll('.lro'), function(el){
 $('btnAdd').addEventListener('click', function(){ addZeile(); });
 $('btnBsp').addEventListener('click', function(){ setzeZeilen(BEISPIEL.map(function(b){return b;})); });
 $('btnLeer').addEventListener('click', function(){ setzeZeilen(null); ERG=null;
-  $('ergebnis').style.display='none'; $('btnPdf').disabled=true; zeigeFehler(''); });
+  $('ergebnis').style.display='none'; $('btnPdf').disabled=true; $('btnEtik').disabled=true;
+  zeigeZuGross([], null); zeigeFehler(''); });
 $('btnVorlage').addEventListener('click', vorlage);
 $('btnImport').addEventListener('click', function(){ $('file').click(); });
 $('file').addEventListener('change', function(e){ if(e.target.files[0]) importiere(e.target.files[0]); e.target.value=''; });
 $('btnRechnen').addEventListener('click', rechnen);
 $('btnPdf').addEventListener('click', pdf);
-$('dicke').addEventListener('change', function(){
-  Array.prototype.forEach.call($('tbody').children, function(tr){
-    var i=tr.querySelector('.c-d'); if(!i.value) i.value=$('dicke').value;
-  });
-});
+$('btnEtik').addEventListener('click', etiketten);
 
 var dz=$('drop');
 ['dragenter','dragover'].forEach(function(ev){ dz.addEventListener(ev,function(e){
@@ -1924,6 +2016,7 @@ dz.addEventListener('drop', function(e){ if(e.dataTransfer.files[0]) importiere(
 dz.addEventListener('click', function(){ $('file').click(); });
 
 window.__ZTEST__ = { rechnen:rechnen, setzeZeilen:setzeZeilen, pdf:pdf, baueDoc:baueDoc,
+  etiketten:etiketten, baueEtiketten:baueEtiketten,
   get erg(){ return ERG; }, boards:alleBoards, BEISPIEL:BEISPIEL };
 })();
 </script>
